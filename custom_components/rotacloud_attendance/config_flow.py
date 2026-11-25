@@ -4,7 +4,7 @@ from homeassistant import config_entries
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import selector
 from .api import ApiError, Client
-from .const import (DOMAIN, CONF_TERMINAL, CONF_POLL, CONF_LATE, CONF_LEAVING,
+from .const import (DOMAIN, CONF_TERMINAL, CONF_POLL, CONF_LATE, CONF_LEAVING, CONF_CLOCKING,
                     DEFAULT_POLL, DEFAULT_LATE, DEFAULT_LEAVING)
 
 POLL_CHOICES = {
@@ -31,6 +31,7 @@ def settings(values):
             mode=selector.SelectSelectorMode.DROPDOWN)),
         vol.Required(CONF_LATE, default=values.get(CONF_LATE, DEFAULT_LATE)): vol.All(vol.Coerce(int), vol.Range(min=0, max=60)),
         vol.Required(CONF_LEAVING, default=values.get(CONF_LEAVING, DEFAULT_LEAVING)): vol.All(vol.Coerce(int), vol.Range(min=0, max=120)),
+        vol.Optional(CONF_CLOCKING, default=values.get(CONF_CLOCKING, False)): bool,
     }
 
 class RotaCloudConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -54,7 +55,8 @@ class RotaCloudConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title="RotaCloud Attendance", data={
                     "api_key": user_input["api_key"].strip(), CONF_TERMINAL: user_input[CONF_TERMINAL]},
                     options={CONF_POLL: int(user_input[CONF_POLL]), CONF_LATE: user_input[CONF_LATE],
-                             CONF_LEAVING: user_input[CONF_LEAVING]})
+                             CONF_LEAVING: user_input[CONF_LEAVING],
+                             CONF_CLOCKING: user_input.get(CONF_CLOCKING, False)})
         return self.async_show_form(step_id="user", errors=errors, data_schema=vol.Schema({
             vol.Required("api_key"): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Required(CONF_TERMINAL): vol.All(vol.Coerce(int), vol.Range(min=1)),

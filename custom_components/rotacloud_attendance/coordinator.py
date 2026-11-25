@@ -1,4 +1,5 @@
-"""Low-traffic read-only coordinator. Clocking gateway not enabled yet."""
+"""Low-traffic coordinator shared by sensors and the opt-in HA terminal."""
+import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
 import time
@@ -12,6 +13,7 @@ from .const import (CONF_POLL, CONF_LATE, CONF_LEAVING, DEFAULT_POLL, DEFAULT_LA
                     DEFAULT_LEAVING, REFRESH_EVENT)
 from .roster import RosterClient
 from .snapshot import day_bounds, snapshot
+from .terminal import Terminal, TerminalError
 
 _LOGGER = logging.getLogger(__name__)
 ROSTER_TTL = 6 * 3600
@@ -34,6 +36,63 @@ class AttendanceCoordinator(DataUpdateCoordinator):
         self.dirty_users = True
         self.inflight = False
         self.last_api_refresh = None
+        self.io_lock = asyncio.Lock()
+        self.terminal = Terminal(client, self._eligible, self._shifts_for, self._terminal_changed,
+                                 scheduled_end_for=self._scheduled_end)
+        # Polls and terminal read/check/write sequences must not race each other.
+        self.terminal.lock = self.io_lock
+
+    def _eligible(self, device, uid):
+        from homeassistant.config_entries import ConfigEntryState
+        from .const import CONF_CLOCKING
+        return (self.entry.options.get(CONF_CLOCKING, False)
+                and self.entry.state == ConfigEntryState.LOADED and not self.dirty_users
+                and self.last_update_success and uid in self.employees
+                and time.monotonic() < self.users_until)
+
+    def _scheduled_end(self, active):
+        return next((s.end for s in self.shifts if s.id == active.shift_id
+                     and s.user == active.user_id), active.scheduled_end)
+
+    def _shifts_for(self, device, uid, now):
+        if time.monotonic() >= self.shifts_until or self.dirty_rota:
+            raise TerminalError("Schedule changed. Enter your PIN again.")
+        _, today, tomorrow = self._bounds(datetime.fromtimestamp(now, timezone.utc))
+        if self.day != today:
+            raise TerminalError("Schedule changed. Enter your PIN again.")
+        used = {a.shift_id for a in self.completed if a.user_id == uid}
+        return tuple(sorted((s for s in self.shifts if s.user == uid and s.id not in used
+                            and s.start < tomorrow and s.end > now), key=lambda s: (s.start, s.id)))
+
+    async def async_prepare_terminal(self):
+        # Refresh expired directory/rota only; never poll on each keypad digit.
+        now = datetime.now(timezone.utc)
+        _, today, _ = self._bounds(now)
+        if (not self.last_update_success or self.day != today or self.dirty_users
+                or self.dirty_rota or self.dirty_history
+                or time.monotonic() >= min(self.users_until, self.shifts_until)):
+            await self.async_refresh()
+        if not self.last_update_success:
+            raise TerminalError("Clocking unavailable. Use the RotaCloud terminal.")
+
+    async def _terminal_changed(self, uid, result):
+        # Called with io_lock held. Publish confirmed responses immediately;
+        # reconcile history later without making the write look retryable.
+        from homeassistant.config_entries import ConfigEntryState
+        if self.entry.state != ConfigEntryState.LOADED:
+            return
+        if result is not None:
+            self.active = [a for a in self.active if a.user_id != uid]
+            if result.clock_out is None:
+                self.active.append(result)
+            else:
+                self.completed = tuple(a for a in self.completed
+                                       if (a.user_id, a.clock_in) != (uid, result.clock_in)) + (result,)
+            now = datetime.now(timezone.utc)
+            _, today, tomorrow = self._bounds(now)
+            self.async_set_updated_data(self._project(now, today, tomorrow))
+        self.dirty_history = True
+        self.hass.async_create_task(self.async_request_refresh())
 
     def _bounds(self, now):
         return day_bounds(now, ZoneInfo(self.hass.config.time_zone))
@@ -72,6 +131,10 @@ class AttendanceCoordinator(DataUpdateCoordinator):
         return async_track_time_interval(self.hass,tick,timedelta(minutes=1))
 
     async def _async_update_data(self):
+        async with self.io_lock:
+            return await self._async_update_locked()
+
+    async def _async_update_locked(self):
         self.inflight = True
         mono = time.monotonic()
         now = datetime.now(timezone.utc)

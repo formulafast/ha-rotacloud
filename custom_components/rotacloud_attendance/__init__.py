@@ -1,4 +1,4 @@
-"""RotaCloud Attendance: read-only development integration."""
+"""RotaCloud Attendance with opt-in administrator terminal."""
 from .const import DOMAIN
 
 async def async_setup_entry(hass, entry):
@@ -7,11 +7,21 @@ async def async_setup_entry(hass, entry):
     from .api import Client
     from .const import CONF_TERMINAL
     from .coordinator import AttendanceCoordinator
+    from .websocket import async_register
+    from homeassistant.components.http import StaticPathConfig
+    from pathlib import Path
 
     client = Client(async_get_clientsession(hass), entry.data["api_key"], entry.data[CONF_TERMINAL])
     coordinator = AttendanceCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
+    async_register(hass)
+    static_key = DOMAIN + "_static_registered"
+    if not hass.data.get(static_key):
+        await hass.http.async_register_static_paths([StaticPathConfig(
+            "/rotacloud_attendance/static/staff-terminal.js",
+            str(Path(__file__).parent / "frontend" / "staff-terminal.js"), True)])
+        hass.data[static_key] = True
     entry.async_on_unload(entry.add_update_listener(_reload))
     entry.async_on_unload(coordinator.listen_for_refresh())
     entry.async_on_unload(coordinator.listen_for_time())
@@ -23,4 +33,7 @@ async def _reload(hass, entry):
 
 async def async_unload_entry(hass, entry):
     from homeassistant.const import Platform
-    return await hass.config_entries.async_unload_platforms(entry, [Platform.SENSOR])
+    unloaded = await hass.config_entries.async_unload_platforms(entry, [Platform.SENSOR])
+    if unloaded:
+        entry.runtime_data.terminal.sessions.clear()
+    return unloaded

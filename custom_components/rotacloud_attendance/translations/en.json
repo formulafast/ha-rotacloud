@@ -3,13 +3,14 @@
     "step": {
       "user": {
         "title": "Connect RotaCloud",
-        "description": "Read-only development integration. Employee attendance is visible to Home Assistant users. Use only on an authorised management instance.",
+        "description": "Employee attendance is visible to authorised Home Assistant users. HA terminal clocking is optional and requires an administrator account.",
         "data": {
           "api_key": "RotaCloud API key",
-          "terminal_id": "Existing terminal ID (reserved for future clocking)",
+          "terminal_id": "RotaCloud terminal ID used for clocking",
           "poll_seconds": "Fallback refresh interval",
           "late_minutes": "Late grace period (minutes)",
-          "leaving_minutes": "Leaving soon threshold (minutes)"
+          "leaving_minutes": "Leaving soon threshold (minutes)",
+          "enable_clocking": "Enable live HA terminal clocking (administrators only)"
         }
       }
     },
@@ -28,7 +29,8 @@
         "data": {
           "poll_seconds": "Fallback refresh interval",
           "late_minutes": "Late grace period (minutes)",
-          "leaving_minutes": "Leaving soon threshold (minutes)"
+          "leaving_minutes": "Leaving soon threshold (minutes)",
+          "enable_clocking": "Enable live HA terminal clocking (administrators only)"
         }
       }
     }

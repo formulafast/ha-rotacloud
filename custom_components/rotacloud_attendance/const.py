@@ -3,6 +3,7 @@ CONF_TERMINAL = "terminal_id"
 CONF_POLL = "poll_seconds"
 CONF_LATE = "late_minutes"
 CONF_LEAVING = "leaving_minutes"
+CONF_CLOCKING = "enable_clocking"
 DEFAULT_POLL = 86400
 DEFAULT_LATE = 0
 DEFAULT_LEAVING = 15
