@@ -28,11 +28,7 @@ def snapshot(employees, shifts, active, completed, now, today, tomorrow, late=0,
     today_shifts = [s for s in shifts if s.start < tomorrow and s.end > today]
     history = [a for a in completed if a.clock_out is not None and a.clock_out >= today and a.clock_in < tomorrow]
     live = {a.user_id:a for a in active}
-    # A completed response may race the live response; prefer the newer completed record for the same clock-in.
-    for a in history:
-        current = live.get(a.user_id)
-        if current and current.clock_in == a.clock_in and a.clock_out > current.clock_in:
-            live.pop(a.user_id)
+    # Live clock-ins take precedence: a new clock-in can share a rounded minute with a prior shift.
     result = {}
     ids = set(live) | {s.user for s in today_shifts} | {a.user_id for a in history}
     for uid in sorted(ids):

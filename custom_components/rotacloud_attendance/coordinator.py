@@ -23,7 +23,7 @@ class AttendanceCoordinator(DataUpdateCoordinator):
         interval = entry.options.get(CONF_POLL, DEFAULT_POLL)
         super().__init__(hass, _LOGGER, config_entry=entry, name="RotaCloud Attendance",
                          update_interval=timedelta(seconds=max(1800, interval)) if interval else None,
-                         always_update=False)
+                         always_update=True)
         self.client, self.entry = client, entry
         self.roster = RosterClient(client)
         self.employees, self.shifts, self.active, self.completed = {}, (), [], ()
@@ -33,6 +33,7 @@ class AttendanceCoordinator(DataUpdateCoordinator):
         self.dirty_rota = True
         self.dirty_users = True
         self.inflight = False
+        self.last_api_refresh = None
 
     def _bounds(self, now):
         return day_bounds(now, ZoneInfo(self.hass.config.time_zone))
@@ -97,6 +98,7 @@ class AttendanceCoordinator(DataUpdateCoordinator):
                 self.history_until = mono + HISTORY_TTL
             self.active = active
             self.day = today
+            self.last_api_refresh = int(datetime.now(timezone.utc).timestamp())
             return self._project(now,today,tomorrow)
         except ApiError as exc:
             self.dirty_users |= users_due and mono >= self.users_until

@@ -24,6 +24,9 @@ class CountSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"{entry_id}_count_{status}"
         self._attr_name = f"RotaCloud {status.title()}"
     @property
+    def extra_state_attributes(self):
+        return {"rotacloud_kind":"count","rotacloud_status":self.status,"last_api_refresh":self.coordinator.last_api_refresh}
+    @property
     def native_value(self):
         states = {"here","break","leaving"} if self.status=="present" else {self.status}
         return sum(s.status in states for s in (self.coordinator.data or {}).values())
@@ -32,7 +35,7 @@ class StaffSensor(CoordinatorEntity, SensorEntity):
     _attr_icon = "mdi:account-clock"
     _unrecorded_attributes = frozenset({"scheduled_start","scheduled_end","clock_in","clock_out",
                                       "active_break_start","completed_break_seconds","clock_in_delta_seconds",
-                                      "clock_out_delta_seconds","shifts","shift_duration_seconds"})
+                                      "clock_out_delta_seconds","shifts","shift_duration_seconds","staff_name"})
     def __init__(self, coordinator, entry_id, staff):
         super().__init__(coordinator)
         self.uid = staff.user_id
@@ -46,9 +49,9 @@ class StaffSensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self):
         staff = (self.coordinator.data or {}).get(self.uid)
         if not staff:
-            return {}
+            return {"rotacloud_kind":"staff"}
         a,s = staff.attendance, staff.scheduled
-        return {"scheduled_start":s.start if s else None,"scheduled_end":s.end if s else None,
+        return {"rotacloud_kind":"staff","staff_name":staff.name,"scheduled_start":s.start if s else None,"scheduled_end":s.end if s else None,
                 "clock_in":a.clock_in if a else None,"clock_out":a.clock_out if a else None,
                 "active_break_start":staff.active_break_start,"completed_break_seconds":staff.completed_break_seconds,
                 "clock_in_delta_seconds":staff.clock_in_delta_seconds,"clock_out_delta_seconds":staff.clock_out_delta_seconds,
