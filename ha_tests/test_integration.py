@@ -96,11 +96,12 @@ async def test_failed_poll_marks_entities_unavailable(hass, fake_api):
 async def test_poll_selector_serializes_for_frontend(hass):
     from homeassistant.helpers import selector
     from homeassistant.helpers import config_validation as cv
-    from voluptuous_serialize import convert
+    from probatio import to_field_list
     from custom_components.rotacloud_attendance.config_flow import settings
     import voluptuous as vol
     schema = vol.Schema(settings({}))
-    serialized = convert(schema, custom_serializer=cv.custom_serializer)
+    serialized = to_field_list(schema, custom_serializer=cv.custom_serializer)
+    assert isinstance(serialized, list)
     poll = next(field for field in serialized if field["name"] == "poll_seconds")
     assert poll["default"] == "86400"
     assert poll["selector"]["select"]["mode"] == "dropdown"
