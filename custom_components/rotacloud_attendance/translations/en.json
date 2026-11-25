@@ -7,7 +7,7 @@
         "data": {
           "api_key": "RotaCloud API key",
           "terminal_id": "Existing terminal ID (reserved for future clocking)",
-          "poll_seconds": "Fallback refresh interval (seconds)",
+          "poll_seconds": "Fallback refresh seconds (0 = event-only; 1800–86400 otherwise)",
           "late_minutes": "Late grace period (minutes)",
           "leaving_minutes": "Leaving soon threshold (minutes)"
         }
@@ -26,7 +26,7 @@
       "init": {
         "title": "Attendance refresh and status",
         "data": {
-          "poll_seconds": "Fallback refresh interval (seconds)",
+          "poll_seconds": "Fallback refresh seconds (0 = event-only; 1800–86400 otherwise)",
           "late_minutes": "Late grace period (minutes)",
           "leaving_minutes": "Leaving soon threshold (minutes)"
         }

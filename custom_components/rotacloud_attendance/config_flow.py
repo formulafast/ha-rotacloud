@@ -10,7 +10,7 @@ from .roster import RosterClient
 
 def settings(values):
     return {
-        vol.Required(CONF_POLL, default=values.get(CONF_POLL, DEFAULT_POLL)): vol.All(vol.Coerce(int), vol.Range(min=120, max=3600)),
+        vol.Required(CONF_POLL, default=values.get(CONF_POLL, DEFAULT_POLL)): vol.All(vol.Coerce(int), vol.Any(0, vol.Range(min=1800, max=86400))),
         vol.Required(CONF_LATE, default=values.get(CONF_LATE, DEFAULT_LATE)): vol.All(vol.Coerce(int), vol.Range(min=0, max=60)),
         vol.Required(CONF_LEAVING, default=values.get(CONF_LEAVING, DEFAULT_LEAVING)): vol.All(vol.Coerce(int), vol.Range(min=0, max=120)),
     }
@@ -23,9 +23,8 @@ class RotaCloudConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_configured")
         errors = {}
         if user_input is not None:
-            client = Client(async_get_clientsession(self.hass), user_input["api_key"].strip(), user_input[CONF_TERMINAL])
             try:
-                await RosterClient(client).employees()
+                client = Client(async_get_clientsession(self.hass), user_input["api_key"].strip(), user_input[CONF_TERMINAL])
                 await client.clocked_in()
             except ApiError as exc:
                 errors["base"] = "invalid_auth" if exc.status in (401, 403) else "cannot_connect"

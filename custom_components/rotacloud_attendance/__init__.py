@@ -14,6 +14,7 @@ async def async_setup_entry(hass, entry):
     entry.runtime_data = coordinator
     entry.async_on_unload(entry.add_update_listener(_reload))
     entry.async_on_unload(coordinator.listen_for_refresh())
+    entry.async_on_unload(coordinator.listen_for_time())
     await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
     return True
 

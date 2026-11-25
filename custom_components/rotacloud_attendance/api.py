@@ -1,5 +1,8 @@
 """Async server-only API transport. No retries on attendance mutations."""
 import asyncio
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from dataclasses import dataclass
 from typing import Any
 import aiohttp
@@ -31,16 +34,39 @@ class Client:
         self._session = session
         self._key = api_key
         self._terminal = terminal_id
+        self._blocked_until = 0.0
+        self._rate_failures = 0
+        self._request_lock = asyncio.Lock()
 
     async def _request(self, method: str, path: str, *, body: dict | None = None, params: dict | None = None) -> tuple[Any, dict]:
+        async with self._request_lock:
+            if time.monotonic() < self._blocked_until:
+                raise ApiError(429)
+            return await self._send(method, path, body=body, params=params)
+
+    async def _send(self, method, path, *, body=None, params=None):
         try:
             async with self._session.request(method, BASE_URL + path,
                     headers={'Authorization': 'Bearer ' + self._key, 'Accept': 'application/json'},
                     json=body, params=params, timeout=aiohttp.ClientTimeout(total=15), allow_redirects=False) as response:
+                if response.status == 429:
+                    self._rate_failures += 1
+                    delay = min(21600, 900 * 2**min(self._rate_failures-1, 5))
+                    raw = response.headers.get("Retry-After")
+                    if raw:
+                        try:
+                            delay = max(delay, float(raw))
+                        except ValueError:
+                            try:
+                                delay = max(delay, (parsedate_to_datetime(raw) - datetime.now(timezone.utc)).total_seconds())
+                            except (ValueError, TypeError, OverflowError):
+                                pass
+                    self._blocked_until = time.monotonic() + delay
                 if not 200 <= response.status < 300:
                     raise ApiError(response.status, uncertain=method != 'GET' and response.status >= 500,
                                    retry_after=response.headers.get('Retry-After'))
                 data = await response.json()
+                self._rate_failures = 0
                 return data, dict(response.headers)
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
             raise ApiError(None, uncertain=method != 'GET') from None
