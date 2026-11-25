@@ -1,9 +1,4 @@
-"""Offline-testable kiosk business logic. No HTTP route or HA action is registered.
-
-A future TLS gateway MUST authenticate the device before invoking either method,
-supply its server-verified identity, enforce location/employee eligibility, and
-limit concurrent requests. Do not expose this class directly to a browser.
-"""
+"""Offline-testable terminal logic. The transport must authenticate callers."""
 import asyncio
 from collections import deque
 from dataclasses import dataclass, replace
@@ -33,10 +28,12 @@ def describe(active, now):
             "shift_seconds":active.shift_seconds(now),"break_seconds":active.break_seconds(now)}
 
 class Terminal:
-    def __init__(self, client, eligible, shifts_for, on_change, *, monotonic=time.monotonic, wall=time.time):
+    def __init__(self, client, eligible, shifts_for, on_change, *, monotonic=time.monotonic, wall=time.time,
+                 scheduled_end_for=lambda active: active.scheduled_end):
         self.client = client
         self.eligible, self.shifts_for, self.on_change = eligible, shifts_for, on_change
         self.monotonic, self.wall = monotonic, wall
+        self.scheduled_end_for = scheduled_end_for
         self.sessions = {}
         self.attempts = deque()
         self.lock = asyncio.Lock()
@@ -49,7 +46,7 @@ class Terminal:
         matches = [a for a in rows if a.user_id == uid]
         if len(matches) > 1 or any(a.clock_out is not None for a in matches):
             raise TerminalError("Attendance needs reconciliation. Use the RotaCloud terminal.")
-        return matches[0] if matches else None
+        return replace(matches[0], scheduled_end=self.scheduled_end_for(matches[0])) if matches else None
 
     async def identify(self, device, pin):
         async with self.lock:
@@ -88,6 +85,8 @@ class Terminal:
                 raise TerminalError("Not authorised.")
             # One read before writing protects against an action taken in RotaCloud since PIN entry.
             current = await self._active(uid)
+            if not self.eligible(device,uid):
+                raise TerminalError("Not authorised.")
             if current != session.active:
                 raise TerminalError("Attendance changed. Enter your PIN again.")
             allowed = ("clock_in",) if current is None else current.allowed_actions
