@@ -10,7 +10,16 @@
           "poll_seconds": "Fallback refresh interval",
           "late_minutes": "Late grace period (minutes)",
           "leaving_minutes": "Leaving soon threshold (minutes)",
-          "enable_clocking": "Enable live HA terminal clocking (administrators only)"
+          "enable_clocking": "Enable live HA terminal clocking (administrators only)",
+          "activate_terminal": "Activate configured terminal for HA",
+          "clock_in_early_minutes": "Clock in early threshold (minutes)",
+          "clock_in_early_color": "Clock in early pill colour",
+          "clock_in_late_minutes": "Clock in late threshold (minutes)",
+          "clock_in_late_color": "Clock in late pill colour",
+          "clock_out_early_minutes": "Clock out early threshold (minutes)",
+          "clock_out_early_color": "Clock out early pill colour",
+          "clock_out_late_minutes": "Clock out late threshold (minutes)",
+          "clock_out_late_color": "Clock out late pill colour"
         }
       }
     },
@@ -30,8 +39,19 @@
           "poll_seconds": "Fallback refresh interval",
           "late_minutes": "Late grace period (minutes)",
           "leaving_minutes": "Leaving soon threshold (minutes)",
-          "enable_clocking": "Enable live HA terminal clocking (administrators only)"
-        }
+          "enable_clocking": "Enable live HA terminal clocking (administrators only)",
+          "activate_terminal": "Activate configured terminal for HA",
+          "clock_in_early_minutes": "Clock in early threshold (minutes)",
+          "clock_in_early_color": "Clock in early pill colour",
+          "clock_in_late_minutes": "Clock in late threshold (minutes)",
+          "clock_in_late_color": "Clock in late pill colour",
+          "clock_out_early_minutes": "Clock out early threshold (minutes)",
+          "clock_out_early_color": "Clock out early pill colour",
+          "clock_out_late_minutes": "Clock out late threshold (minutes)",
+          "clock_out_late_color": "Clock out late pill colour",
+          "terminal_id": "RotaCloud terminal ID"
+        },
+        "description": "Activating the configured terminal opens that terminal in RotaCloud when it is inactive. Use a dedicated terminal ID for HA. Timing pills appear only beyond their threshold."
       }
     }
   }

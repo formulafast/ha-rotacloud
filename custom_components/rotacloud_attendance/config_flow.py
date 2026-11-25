@@ -4,8 +4,8 @@ from homeassistant import config_entries
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import selector
 from .api import ApiError, Client
-from .const import (DOMAIN, CONF_TERMINAL, CONF_POLL, CONF_LATE, CONF_LEAVING, CONF_CLOCKING,
-                    DEFAULT_POLL, DEFAULT_LATE, DEFAULT_LEAVING)
+from .const import (DOMAIN, CONF_TERMINAL, CONF_POLL, CONF_LATE, CONF_LEAVING, CONF_CLOCKING, CONF_ACTIVATE_TERMINAL,
+                    DEFAULT_POLL, DEFAULT_LATE, DEFAULT_LEAVING, TIMING_KINDS, timing_options)
 
 POLL_CHOICES = {
     "0": "Event-only (requires working webhook relay)",
@@ -25,14 +25,19 @@ def settings(values):
         choices[current] = f"Current setting ({current} seconds)"
     if current not in choices:
         current = str(DEFAULT_POLL)
-    return {
+    result = {
         vol.Required(CONF_POLL, default=current): selector.SelectSelector(selector.SelectSelectorConfig(
             options=[{"value": value, "label": label} for value, label in choices.items()],
             mode=selector.SelectSelectorMode.DROPDOWN)),
         vol.Required(CONF_LATE, default=values.get(CONF_LATE, DEFAULT_LATE)): vol.All(vol.Coerce(int), vol.Range(min=0, max=60)),
         vol.Required(CONF_LEAVING, default=values.get(CONF_LEAVING, DEFAULT_LEAVING)): vol.All(vol.Coerce(int), vol.Range(min=0, max=120)),
         vol.Optional(CONF_CLOCKING, default=values.get(CONF_CLOCKING, False)): bool,
+        vol.Optional(CONF_ACTIVATE_TERMINAL, default=values.get(CONF_ACTIVATE_TERMINAL, False)): bool,
     }
+    for kind, defaults in timing_options(values).items():
+        result[vol.Optional(kind + "_minutes", default=defaults["minutes"])] = vol.All(vol.Coerce(int), vol.Range(min=0, max=120))
+        result[vol.Optional(kind + "_color", default=defaults["color"])] = selector.ColorRGBSelector()
+    return result
 
 class RotaCloudConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -56,7 +61,9 @@ class RotaCloudConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "api_key": user_input["api_key"].strip(), CONF_TERMINAL: user_input[CONF_TERMINAL]},
                     options={CONF_POLL: int(user_input[CONF_POLL]), CONF_LATE: user_input[CONF_LATE],
                              CONF_LEAVING: user_input[CONF_LEAVING],
-                             CONF_CLOCKING: user_input.get(CONF_CLOCKING, False)})
+                             CONF_CLOCKING: user_input.get(CONF_CLOCKING, False),
+                             CONF_ACTIVATE_TERMINAL: user_input.get(CONF_ACTIVATE_TERMINAL, False),
+                             **{k: v for k, v in user_input.items() if any(k.startswith(kind + "_") for kind in TIMING_KINDS)}})
         return self.async_show_form(step_id="user", errors=errors, data_schema=vol.Schema({
             vol.Required("api_key"): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Required(CONF_TERMINAL): vol.All(vol.Coerce(int), vol.Range(min=1)),
@@ -70,4 +77,7 @@ class AttendanceOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         if user_input is not None:
             return self.async_create_entry(title="", data={**user_input, CONF_POLL: int(user_input[CONF_POLL])})
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(settings(self.config_entry.options)))
+        return self.async_show_form(step_id="init", data_schema=vol.Schema({
+            vol.Optional(CONF_TERMINAL, default=self.config_entry.options.get(CONF_TERMINAL, self.config_entry.data[CONF_TERMINAL])):
+                vol.All(vol.Coerce(int), vol.Range(min=1)),
+            **settings(self.config_entry.options)}))

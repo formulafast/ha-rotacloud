@@ -49,3 +49,33 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_pagination(self):
         self.client._request.side_effect = [([{'user':1,'in_time':100}], {'X-Total-Count':'2'}), ([{'user':2,'in_time':100}], {'X-Total-Count':'2'})]
         self.assertEqual([a.user_id for a in await self.client.clocked_in()],[1,2])
+
+    async def test_terminal_activation_is_explicit_and_uses_configured_id(self):
+        self.client._activate_terminal = True
+        self.client._device_id = 'home-assistant-test'
+        self.client._request.side_effect = [({'id':7,'active':False}, {}), ({'id':7,'active':True}, {})]
+        await self.client.prepare_terminal('start_break')
+        self.assertEqual(self.client._request.await_count, 2)
+        self.client._request.assert_awaited_with('POST','/terminals_active',body={'terminal':7,'device':'home-assistant-test'})
+
+    async def test_inactive_terminal_needs_opt_in(self):
+        self.client._request.return_value = ({'id':7,'active':False}, {})
+        with self.assertRaises(ApiError) as error:
+            await self.client.prepare_terminal('clock_out')
+        self.assertEqual(error.exception.reason, 'terminal_inactive')
+        self.assertEqual(self.client._request.await_count, 1)
+
+    async def test_photo_policy_is_not_bypassed(self):
+        self.client._activate_terminal = True
+        self.client._request.return_value = ({'id':7,'active':False,'require_photo_breaks':True}, {})
+        with self.assertRaises(ApiError) as error:
+            await self.client.prepare_terminal('start_break')
+        self.assertEqual(error.exception.reason, 'photo_required')
+        self.assertEqual(self.client._request.await_count, 1)
+
+    async def test_uncertain_terminal_launch_is_not_retried(self):
+        self.client._activate_terminal = True
+        self.client._request.side_effect = [({'id':7,'active':False}, {}), ApiError(None, uncertain=True)]
+        with self.assertRaises(ApiError):
+            await self.client.prepare_terminal('clock_out')
+        self.assertEqual(self.client._request.await_count, 2)

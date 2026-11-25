@@ -160,7 +160,7 @@ class FFStaffTerminal extends HTMLElement {
       el("h2","Hello, "+p.name);
       el("p",p.state==="out"?"Not clocked in":p.state==="break"?"On break":"Clocked in");
       if(p.state==="break") stats([["Current break",this.duration(Date.now()/1000-p.active_break_start),true]]);
-      if(p.state!=="out") stats([["Clocked in",this.time(p.clock_in)],["Scheduled finish",this.time(p.scheduled_end)],["Total breaks",this.duration(p.break_seconds)]]);
+      if(p.state!=="out") stats([["Clocked in",this.time(p.clock_in)],["Scheduled finish",this.time(p.scheduled_end)],["Breaks today",this.duration(p.break_seconds_today ?? p.break_seconds)]]);
       const actions=el("div",null,"actions");
       if(p.state==="out" && p.shifts.length) {
         const label=el("label","Scheduled shift",null,actions);
@@ -180,9 +180,9 @@ class FFStaffTerminal extends HTMLElement {
       const greeting={clock_in:"Have a great shift, ",clock_out:"Thanks for today, ",start_break:"Enjoy your break, ",end_break:"Welcome back, "};
       el("p",greeting[r.action]+this.person.name+"!");
       if(r.action==="clock_in") stats([["Clock-in time",this.time(r.clock_in)],["Scheduled finish",this.time(r.scheduled_end)]]);
-      if(r.action==="start_break") stats([["Break started",this.time(r.last_break_start)],["Previous breaks",this.duration(r.break_seconds)]]);
-      if(r.action==="end_break") stats([["This break",this.duration(r.last_break_seconds)],["Total breaks",this.duration(r.break_seconds)]]);
-      if(r.action==="clock_out") {stats([["Clock-out time",this.time(r.clock_out)],["Total shift duration",this.duration(r.shift_seconds)],["Total breaks",this.duration(r.break_seconds)]]);if(r.provisional_break_total)el("p","Break total awaiting RotaCloud reconciliation.");}
+      if(r.action==="start_break") stats([["Break started",this.time(r.last_break_start)],["Breaks today",this.duration(r.break_seconds_today ?? r.break_seconds)]]);
+      if(r.action==="end_break") stats([["This break",this.duration(r.last_break_seconds)],["Breaks today",this.duration(r.break_seconds_today ?? r.break_seconds)]]);
+      if(r.action==="clock_out") {stats([["Clock-out time",this.time(r.clock_out)],["Total shift duration",this.duration(r.shift_seconds)],["Breaks today",this.duration(r.break_seconds_today ?? r.break_seconds)]]);if(r.provisional_break_total)el("p","Break total awaiting RotaCloud reconciliation.");}
       button("Done","quiet",()=>this.reset());
     }
   }

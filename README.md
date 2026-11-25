@@ -1,6 +1,6 @@
 # RotaCloud Attendance for Home Assistant
 
-Unofficial community integration. Version 0.4.0 adds an **opt-in administrator terminal pilot** inside Home Assistant. Attendance viewing remains read-only by default. RotaCloud remains the system of record.
+Unofficial community integration. Version 0.4.1 provides an **opt-in administrator terminal pilot** inside Home Assistant, daily break totals and configurable Live Attendance timing pills. Attendance viewing remains read-only by default. RotaCloud remains the system of record.
 
 ## Features
 - Staff attendance status and aggregate counts.
@@ -19,6 +19,8 @@ Requires Home Assistant 2026.11 or newer. Tested using HA 2026.11.3 with simulat
 5. Compare actual attendance with RotaCloud before relying on the dashboard.
 
 See [pilot installation](docs/installation-pilot.md) and [0.4.0 terminal setup, limitations and rollback](docs/release-notes-0.4.0.md). The terminal JavaScript is packaged with the integration; its dashboard resource must be registered separately. Existing dashboard resources are not automatically changed.
+
+For current resource URLs, terminal activation and Live Attendance settings, see [v0.4.1 upgrade instructions](docs/release-notes-0.4.1.md). Both Live and Terminal cards and the supplied logo are now packaged in the integration.
 
 ## Privacy and security
 Employee names and attendance are sensitive operational data. Only use the individual sensors in a trusted HA instance with authorised users. The integration excludes selected attributes from Recorder but not the state history itself; configure explicit Recorder exclusions before connecting real data. The live terminal requires an existing trusted administrator session and is not a restricted staff account. Dashboard visibility is not an access control boundary. Keep API keys and PINs private. Clocking stays disabled until explicitly enabled. No production security certification is claimed.

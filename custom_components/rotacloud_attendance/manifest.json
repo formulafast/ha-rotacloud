@@ -1,8 +1,11 @@
 {
   "domain": "rotacloud_attendance",
   "name": "RotaCloud Attendance",
-  "version": "0.4.0",
-  "dependencies": ["websocket_api", "http"],
+  "version": "0.4.1",
+  "dependencies": [
+    "websocket_api",
+    "http"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/formulafast/ha-rotacloud",
   "issue_tracker": "https://github.com/formulafast/ha-rotacloud/issues",
