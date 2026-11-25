@@ -1,0 +1,9 @@
+DOMAIN = "rotacloud_attendance"
+CONF_TERMINAL = "terminal_id"
+CONF_POLL = "poll_seconds"
+CONF_LATE = "late_minutes"
+CONF_LEAVING = "leaving_minutes"
+DEFAULT_POLL = 300
+DEFAULT_LATE = 0
+DEFAULT_LEAVING = 15
+REFRESH_EVENT = "rotacloud_attendance_refresh"

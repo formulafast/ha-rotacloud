@@ -1,0 +1,14 @@
+{
+  "domain": "rotacloud_attendance",
+  "name": "RotaCloud Attendance",
+  "version": "0.2.0-dev.1",
+  "config_flow": true,
+  "documentation": "https://github.com/formulafast/ha-rotacloud",
+  "issue_tracker": "https://github.com/formulafast/ha-rotacloud/issues",
+  "codeowners": [
+    "@formulafast"
+  ],
+  "iot_class": "cloud_polling",
+  "integration_type": "service",
+  "requirements": []
+}
