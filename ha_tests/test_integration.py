@@ -51,7 +51,18 @@ async def test_setup_entities_refresh_and_unload(hass, fake_api):
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state == ConfigEntryState.NOT_LOADED
-    assert hass.states.get(staff[0].entity_id) is None
+    # HA preserves registry-backed entities as unavailable placeholders on unload.
+    for state in [*counts.values(), *staff]:
+        restored = hass.states.get(state.entity_id)
+        assert restored is None or (restored.state == "unavailable" and restored.attributes.get("restored") is True)
+        if restored is not None:
+            assert "rotacloud_kind" not in restored.attributes
+            assert "clock_in" not in restored.attributes
+    # An unloaded integration must not respond to attendance refresh events.
+    fake_api.reset_mock()
+    hass.bus.async_fire("rotacloud_attendance_refresh", {"kind": "clock_in"})
+    await hass.async_block_till_done()
+    fake_api.assert_not_awaited()
 
 async def test_config_flow_validation(hass, fake_api):
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
