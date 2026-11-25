@@ -17,6 +17,13 @@ def api():
 
     async def request(method, path, *, body=None, params=None):
         state["calls"].append((method, path, body))
+        if path == "/terminals/1":
+            return {"id": 1, "active": state.get("terminal_active", True)}, {}
+        if path == "/terminals_active":
+            assert body["terminal"] == 1
+            assert body["device"].startswith("home-assistant-")
+            state["terminal_active"] = True
+            return {"id": 1, "active": True}, {}
         if path == "/users":
             return [{"id": 1, "first_name": "Alex", "last_name": "Example"}], {}
         if path == "/shifts":
@@ -52,9 +59,9 @@ def api():
         yield state
 
 
-async def setup(hass, enabled=True):
+async def setup(hass, enabled=True, **options):
     entry = MockConfigEntry(domain=DOMAIN, data={"api_key": "fictional", "terminal_id": 1},
-                            options={"poll_seconds": 86400, CONF_CLOCKING: enabled}, unique_id=DOMAIN)
+                            options={"poll_seconds": 86400, CONF_CLOCKING: enabled, **options}, unique_id=DOMAIN)
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -217,3 +224,68 @@ async def test_packaged_card_served_and_reload_is_idempotent(hass, hass_ws_clien
     assert await hass.config_entries.async_reload(entry.entry_id)
     result = await send(client, entry, "identify", password="1234")
     assert result["success"]
+
+
+async def test_inactive_terminal_launch_is_opt_in_and_precedes_clocking(hass, hass_ws_client, api):
+    api["terminal_active"] = False
+    entry = await setup(hass, activate_terminal=True)
+    client = await hass_ws_client(hass)
+    person = (await send(client, entry, "identify", password="1234"))["result"]
+    result = await send(client, entry, "act", token=person["token"], action="clock_in", shift_id=7)
+    assert result["success"], result
+    writes = [c for c in api["calls"] if c[0] != "GET"]
+    assert [c[1] for c in writes] == ["/terminals_active", "/users_clocked_in"]
+
+
+async def test_inactive_terminal_never_launches_without_option(hass, hass_ws_client, api):
+    api["terminal_active"] = False
+    entry = await setup(hass)
+    client = await hass_ws_client(hass)
+    person = (await send(client, entry, "identify", password="1234"))["result"]
+    result = await send(client, entry, "act", token=person["token"], action="clock_in", shift_id=7)
+    assert "inactive" in result["error"]["message"]
+    assert not [c for c in api["calls"] if c[0] != "GET"]
+
+
+async def test_terminal_breaks_include_prior_clockings_today_without_double_count(hass, hass_ws_client, api):
+    entry = await setup(hass)
+    from custom_components.rotacloud_attendance.model import Attendance, Break
+    now = api["now"]
+    entry.runtime_data.completed = (
+        Attendance(1, now-500, now-300, (Break(now-490, now-430),)),
+        Attendance(1, now-250, now-50, (Break(now-240, now-120),)),
+    )
+    client = await hass_ws_client(hass)
+    person = (await send(client, entry, "identify", password="1234"))["result"]
+    assert person["break_seconds_today"] == 180
+    result = await send(client, entry, "act", token=person["token"], action="clock_in", shift_id=7)
+    assert result["success"]
+    assert result["result"]["break_seconds_today"] == 180
+
+
+async def test_options_store_terminal_and_timing_colours(hass, api):
+    entry = await setup(hass)
+    form = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(form["flow_id"], {
+        "terminal_id": 99, "poll_seconds": "86400", "late_minutes": 0, "leaving_minutes": 15,
+        "enable_clocking": True, "activate_terminal": True,
+        "clock_in_late_minutes": 5, "clock_in_late_color": [200, 30, 50],
+        "clock_out_early_minutes": 3, "clock_out_early_color": [250, 210, 20],
+    })
+    await hass.async_block_till_done()
+    assert entry.options["terminal_id"] == 99
+    assert entry.runtime_data.client._terminal == 99
+    from custom_components.rotacloud_attendance.const import timing_options
+    assert timing_options(entry.options)["clock_in_late"] == {"minutes": 5, "color": [200, 30, 50]}
+    present = next(s for s in hass.states.async_all("sensor") if s.attributes.get("rotacloud_status") == "present")
+    assert present.attributes["display_options"]["clock_out_early"]["minutes"] == 3
+
+
+async def test_uncertain_activation_never_sends_attendance(hass, hass_ws_client, api):
+    entry = await setup(hass, activate_terminal=True)
+    client = await hass_ws_client(hass)
+    person = (await send(client, entry, "identify", password="1234"))["result"]
+    with patch.object(entry.runtime_data.client, "prepare_terminal", side_effect=ApiError(None, uncertain=True)):
+        result = await send(client, entry, "act", token=person["token"], action="clock_in", shift_id=7)
+    assert "No attendance action was sent" in result["error"]["message"]
+    assert not [c for c in api["calls"] if c[0] != "GET"]

@@ -13,10 +13,11 @@ BASE_URL = 'https://api.rotacloud.com/v1'
 
 class ApiError(Exception):
     """Safe exception: no URLs, PINs, tokens or raw response data."""
-    def __init__(self, status: int | None, *, uncertain: bool = False, retry_after: str | None = None):
+    def __init__(self, status: int | None, *, uncertain: bool = False, retry_after: str | None = None, reason: str | None = None):
         self.status = status
         self.uncertain = uncertain
         self.retry_after = retry_after
+        self.reason = reason
         super().__init__('RotaCloud request failed' if not uncertain else 'RotaCloud write outcome unknown; reconcile before retrying')
 
 
@@ -28,7 +29,7 @@ class Employee:
 
 
 class Client:
-    def __init__(self, session: aiohttp.ClientSession, api_key: str, terminal_id: int):
+    def __init__(self, session: aiohttp.ClientSession, api_key: str, terminal_id: int, *, activate_terminal=False, device_id="home-assistant"):
         if type(terminal_id) is not int or terminal_id <= 0 or not api_key:
             raise ValueError('Missing valid terminal or credentials')
         self._session = session
@@ -37,6 +38,33 @@ class Client:
         self._blocked_until = 0.0
         self._rate_failures = 0
         self._request_lock = asyncio.Lock()
+        self._activate_terminal = activate_terminal
+        self._device_id = device_id
+
+    async def prepare_terminal(self, action):
+        """Validate terminal configuration before touching employee attendance.
+
+        Activation is a separate, explicit integration option. Never choose a
+        different terminal or change photo requirements automatically.
+        """
+        info, _ = await self._request('GET', f'/terminals/{self._terminal}')
+        if not isinstance(info, dict) or info.get('id') != self._terminal or info.get('deleted'):
+            raise ApiError(400, reason='terminal_invalid')
+        photo_field = 'require_photo_breaks' if action in ('start_break', 'end_break') else 'require_photo'
+        if info.get(photo_field):
+            raise ApiError(400, reason='photo_required')
+        if info.get('active') is True:
+            return
+        if not self._activate_terminal:
+            raise ApiError(400, reason='terminal_inactive')
+        # Launch only the configured terminal. A rejected/uncertain launch is
+        # never followed by an attendance write or an automatic POST retry.
+        launched, _ = await self._request('POST', '/terminals_active',
+            body={'terminal': self._terminal, 'device': self._device_id})
+        if not isinstance(launched, dict) or launched.get('id') != self._terminal or launched.get('active') is not True:
+            raise ApiError(None, uncertain=True)
+        if launched.get(photo_field):
+            raise ApiError(400, reason='photo_required')
 
     async def _request(self, method: str, path: str, *, body: dict | None = None, params: dict | None = None) -> tuple[Any, dict]:
         async with self._request_lock:

@@ -38,7 +38,7 @@ class AttendanceCoordinator(DataUpdateCoordinator):
         self.last_api_refresh = None
         self.io_lock = asyncio.Lock()
         self.terminal = Terminal(client, self._eligible, self._shifts_for, self._terminal_changed,
-                                 scheduled_end_for=self._scheduled_end)
+                                 scheduled_end_for=self._scheduled_end, daily_breaks_for=self._daily_breaks)
         # Polls and terminal read/check/write sequences must not race each other.
         self.terminal.lock = self.io_lock
 
@@ -53,6 +53,15 @@ class AttendanceCoordinator(DataUpdateCoordinator):
     def _scheduled_end(self, active):
         return next((s.end for s in self.shifts if s.id == active.shift_id
                      and s.user == active.user_id), active.scheduled_end)
+
+    def _daily_breaks(self, uid, active, now):
+        _, today, tomorrow = self._bounds(datetime.fromtimestamp(now, timezone.utc))
+        records = [a for a in self.completed if a.user_id == uid
+                   and (active is None or a.clock_in != active.clock_in)]
+        if active is not None:
+            records.append(active)
+        return sum(max(0, min(b.end if b.end is not None else now, tomorrow) - max(b.start, today))
+                   for a in records for b in a.breaks)
 
     def _shifts_for(self, device, uid, now):
         if time.monotonic() >= self.shifts_until or self.dirty_rota:

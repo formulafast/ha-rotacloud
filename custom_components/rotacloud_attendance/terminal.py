@@ -10,6 +10,22 @@ from .model import Attendance
 class TerminalError(Exception):
     pass
 
+def clocking_error(exc):
+    reasons = {
+        "terminal_inactive": "The configured RotaCloud terminal is inactive. Enable 'Activate configured terminal for HA' in the integration options, or open that terminal in RotaCloud.",
+        "terminal_invalid": "The configured terminal ID does not identify an available RotaCloud terminal. Correct it in the integration options.",
+        "photo_required": "This RotaCloud terminal requires a photo for this action. Use the RotaCloud terminal; the HA card does not capture photos.",
+    }
+    if exc.reason in reasons:
+        return reasons[exc.reason]
+    if exc.status in (400, 404, 422):
+        return "RotaCloud rejected this action (HTTP %s). Check the terminal ID and terminal settings in the integration configuration." % exc.status
+    if exc.status in (401, 403):
+        return "RotaCloud denied clocking permission (HTTP %s). Check the API key and terminal permissions." % exc.status
+    if exc.status == 429:
+        return "RotaCloud rate limit reached. Requests are paused; use the existing terminal if needed."
+    return "Clocking failed (HTTP %s). Use the RotaCloud terminal." % (exc.status or "unavailable")
+
 @dataclass(frozen=True, slots=True)
 class Session:
     device: str
@@ -29,11 +45,13 @@ def describe(active, now):
 
 class Terminal:
     def __init__(self, client, eligible, shifts_for, on_change, *, monotonic=time.monotonic, wall=time.time,
-                 scheduled_end_for=lambda active: active.scheduled_end):
+                 scheduled_end_for=lambda active: active.scheduled_end,
+                 daily_breaks_for=lambda uid, active, now: active.break_seconds(now) if active else 0):
         self.client = client
         self.eligible, self.shifts_for, self.on_change = eligible, shifts_for, on_change
         self.monotonic, self.wall = monotonic, wall
         self.scheduled_end_for = scheduled_end_for
+        self.daily_breaks_for = daily_breaks_for
         self.sessions = {}
         self.attempts = deque()
         self.lock = asyncio.Lock()
@@ -72,6 +90,7 @@ class Terminal:
             token = secrets.token_urlsafe(32)
             self.sessions[token] = Session(device,person,active,tuple(s.id for s in shifts),self.monotonic()+20)
             return {"session":token,"name":person.first_name,**describe(active,int(self.wall())),
+                    "break_seconds_today":self.daily_breaks_for(person.id,active,int(self.wall())),
                     "shifts":[{"id":s.id,"start":s.start,"end":s.end} for s in shifts]}
 
     async def act(self,device,token,action,shift_id=None):
@@ -83,6 +102,14 @@ class Terminal:
             uid = session.employee.id
             if not self.eligible(device,uid):
                 raise TerminalError("Not authorised.")
+            if action not in (("clock_in",) if session.active is None else session.active.allowed_actions):
+                raise TerminalError("Action not available.")
+            try:
+                await self.client.prepare_terminal(action)
+            except ApiError as exc:
+                if exc.uncertain:
+                    raise TerminalError("Terminal activation could not be confirmed. No attendance action was sent. Check the terminal in RotaCloud before trying again.") from None
+                raise TerminalError(clocking_error(exc)) from None
             # One read before writing protects against an action taken in RotaCloud since PIN entry.
             current = await self._active(uid)
             if not self.eligible(device,uid):
@@ -129,7 +156,7 @@ class Terminal:
                     except Exception:
                         pass
                     raise TerminalError("Outcome unknown. Check RotaCloud before trying again.") from None
-                raise TerminalError("Clocking failed. Use the RotaCloud terminal.") from None
+                raise TerminalError(clocking_error(exc)) from None
             # Update local state from confirmed response, not an additional full read.
             # The callback must reconcile provisional clock-out data asynchronously and never
             # convert an already confirmed mutation into a retryable UI error.
@@ -139,6 +166,7 @@ class Terminal:
                 # Attendance has already been written: never invite a duplicate write.
                 pass
             response = {"action":action,**describe(result,int(self.wall()))}
+            response["break_seconds_today"] = self.daily_breaks_for(uid,result,int(self.wall()))
             if action in ("start_break","end_break"):
                 response["last_break_seconds"] = b.seconds(int(self.wall()))
                 response["last_break_start"] = b.start

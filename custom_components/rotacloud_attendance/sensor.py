@@ -2,6 +2,7 @@
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from .const import timing_options
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = entry.runtime_data
@@ -18,6 +19,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class CountSensor(CoordinatorEntity, SensorEntity):
     _attr_icon = "mdi:account-group"
+    _unrecorded_attributes = frozenset({"display_options"})
     def __init__(self, coordinator, entry_id, status):
         super().__init__(coordinator)
         self.status = status
@@ -25,7 +27,10 @@ class CountSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"RotaCloud {status.title()}"
     @property
     def extra_state_attributes(self):
-        return {"rotacloud_kind":"count","rotacloud_status":self.status,"last_api_refresh":self.coordinator.last_api_refresh}
+        result = {"rotacloud_kind":"count","rotacloud_status":self.status,"last_api_refresh":self.coordinator.last_api_refresh}
+        if self.status == "present":
+            result["display_options"] = timing_options(self.coordinator.entry.options)
+        return result
     @property
     def native_value(self):
         states = {"here","break","leaving"} if self.status=="present" else {self.status}
