@@ -19,6 +19,6 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install matching HA test framework
-        run: python -m pip install pytest-homeassistant==2026.11.3
+        run: python -m pip install pytest-homeassistant==2026.11.3 voluptuous-serialize
       - name: Test integration in isolated HA
         run: python -m pytest -v ha_tests
