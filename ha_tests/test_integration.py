@@ -67,15 +67,17 @@ async def test_setup_entities_refresh_and_unload(hass, fake_api):
 async def test_config_flow_validation(hass, fake_api):
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
     assert result["type"] == FlowResultType.FORM
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**DATA, **OPTIONS})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**DATA, **OPTIONS, "poll_seconds": "86400"})
     assert result["type"] == FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert result["result"].state == ConfigEntryState.LOADED
+    assert result["result"].options["poll_seconds"] == 86400
+    assert result["result"].runtime_data.update_interval.total_seconds() == 86400
 
 async def test_config_flow_rejects_invalid_key(hass):
     with patch("custom_components.rotacloud_attendance.api.Client._request", new_callable=AsyncMock, side_effect=ApiError(401)) as mock:
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
-        result = await hass.config_entries.flow.async_configure(result["flow_id"], {**DATA, **OPTIONS})
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {**DATA, **OPTIONS, "poll_seconds": "86400"})
         assert result["type"] == FlowResultType.FORM
         assert result["errors"]["base"] == "invalid_auth"
         mock.assert_awaited_once()
@@ -90,3 +92,31 @@ async def test_failed_poll_marks_entities_unavailable(hass, fake_api):
     await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get(present.entity_id).state == "unavailable"
+
+async def test_poll_selector_serializes_for_frontend(hass):
+    from homeassistant.helpers import selector
+    from homeassistant.helpers import config_validation as cv
+    from voluptuous_serialize import convert
+    from custom_components.rotacloud_attendance.config_flow import settings
+    import voluptuous as vol
+    schema = vol.Schema(settings({}))
+    serialized = convert(schema, custom_serializer=cv.custom_serializer)
+    poll = next(field for field in serialized if field["name"] == "poll_seconds")
+    assert poll["default"] == "86400"
+    assert poll["selector"]["select"]["mode"] == "dropdown"
+    choices = {item["value"] for item in poll["selector"]["select"]["options"]}
+    assert {"86400", "1800", "0"} <= choices
+    assert schema({"poll_seconds": "0", "late_minutes": 0, "leaving_minutes": 15})["poll_seconds"] == "0"
+    with pytest.raises(vol.Invalid):
+        schema({"poll_seconds": "60", "late_minutes": 0, "leaving_minutes": 15})
+
+async def test_options_flow_stores_integer_poll(hass, fake_api):
+    entry = MockConfigEntry(domain=DOMAIN, data=DATA, options=OPTIONS, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] == FlowResultType.FORM
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {**OPTIONS, "poll_seconds": "21600"})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options["poll_seconds"] == 21600

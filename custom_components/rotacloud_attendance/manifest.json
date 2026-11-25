@@ -1,7 +1,7 @@
 {
   "domain": "rotacloud_attendance",
   "name": "RotaCloud Attendance",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "config_flow": true,
   "documentation": "https://github.com/formulafast/ha-rotacloud",
   "issue_tracker": "https://github.com/formulafast/ha-rotacloud/issues",

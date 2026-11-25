@@ -6,11 +6,29 @@ from homeassistant.helpers import selector
 from .api import ApiError, Client
 from .const import (DOMAIN, CONF_TERMINAL, CONF_POLL, CONF_LATE, CONF_LEAVING,
                     DEFAULT_POLL, DEFAULT_LATE, DEFAULT_LEAVING)
-from .roster import RosterClient
+
+POLL_CHOICES = {
+    "0": "Event-only (requires working webhook relay)",
+    "1800": "30 minutes",
+    "3600": "1 hour",
+    "7200": "2 hours",
+    "14400": "4 hours",
+    "21600": "6 hours",
+    "43200": "12 hours",
+    "86400": "24 hours (minimum API usage)"
+}
 
 def settings(values):
+    current = str(values.get(CONF_POLL, DEFAULT_POLL))
+    choices = dict(POLL_CHOICES)
+    if current not in choices and current.isdigit() and 1800 <= int(current) <= 86400:
+        choices[current] = f"Current setting ({current} seconds)"
+    if current not in choices:
+        current = str(DEFAULT_POLL)
     return {
-        vol.Required(CONF_POLL, default=values.get(CONF_POLL, DEFAULT_POLL)): vol.All(vol.Coerce(int), vol.Any(0, vol.Range(min=1800, max=86400))),
+        vol.Required(CONF_POLL, default=current): selector.SelectSelector(selector.SelectSelectorConfig(
+            options=[{"value": value, "label": label} for value, label in choices.items()],
+            mode=selector.SelectSelectorMode.DROPDOWN)),
         vol.Required(CONF_LATE, default=values.get(CONF_LATE, DEFAULT_LATE)): vol.All(vol.Coerce(int), vol.Range(min=0, max=60)),
         vol.Required(CONF_LEAVING, default=values.get(CONF_LEAVING, DEFAULT_LEAVING)): vol.All(vol.Coerce(int), vol.Range(min=0, max=120)),
     }
@@ -35,7 +53,8 @@ class RotaCloudConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title="RotaCloud Attendance", data={
                     "api_key": user_input["api_key"].strip(), CONF_TERMINAL: user_input[CONF_TERMINAL]},
-                    options={k: user_input[k] for k in (CONF_POLL, CONF_LATE, CONF_LEAVING)})
+                    options={CONF_POLL: int(user_input[CONF_POLL]), CONF_LATE: user_input[CONF_LATE],
+                             CONF_LEAVING: user_input[CONF_LEAVING]})
         return self.async_show_form(step_id="user", errors=errors, data_schema=vol.Schema({
             vol.Required("api_key"): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Required(CONF_TERMINAL): vol.All(vol.Coerce(int), vol.Range(min=1)),
@@ -48,5 +67,5 @@ class RotaCloudConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class AttendanceOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            return self.async_create_entry(title="", data={**user_input, CONF_POLL: int(user_input[CONF_POLL])})
         return self.async_show_form(step_id="init", data_schema=vol.Schema(settings(self.config_entry.options)))
