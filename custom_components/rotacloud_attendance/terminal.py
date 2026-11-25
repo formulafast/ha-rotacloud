@@ -42,8 +42,14 @@ class Terminal:
         self.lock = asyncio.Lock()
 
     async def _active(self, uid):
-        rows = await self.client.clocked_in()
-        return next((a for a in rows if a.user_id == uid), None)
+        try:
+            rows = await self.client.clocked_in()
+        except (ApiError, ValueError, TypeError, AttributeError):
+            raise TerminalError("Clocking unavailable. Use the RotaCloud terminal.") from None
+        matches = [a for a in rows if a.user_id == uid]
+        if len(matches) > 1 or any(a.clock_out is not None for a in matches):
+            raise TerminalError("Attendance needs reconciliation. Use the RotaCloud terminal.")
+        return matches[0] if matches else None
 
     async def identify(self, device, pin):
         async with self.lock:
@@ -97,18 +103,32 @@ class Terminal:
             try:
                 if action=="clock_in":
                     result = await self.client.clock_in(uid,shift_id)
+                    if result.user_id != uid or result.clock_out is not None:
+                        raise ApiError(None, uncertain=True)
+                    if shift_id is not None:
+                        selected = next(s for s in fresh if s.id == shift_id)
+                        result = replace(result, scheduled_end=selected.end)
                 elif action=="clock_out":
                     result = await self.client.clock_out(uid)
+                    if result.user_id != uid or result.clock_out is None or result.clock_out < result.clock_in:
+                        raise ApiError(None, uncertain=True)
                     # Initial API response can omit breaks. Preserve known breaks for provisional display.
                     if current.breaks and not result.breaks:
                         result = replace(result,breaks=tuple(replace(b,end=result.clock_out) if b.end is None else b for b in current.breaks))
                 else:
                     b = await self.client.set_break(uid,action)
+                    if action == "start_break" and (b.end is not None or b.start < current.clock_in):
+                        raise ApiError(None, uncertain=True)
+                    if action == "end_break" and (current.active_break is None or b.start != current.active_break.start or b.end is None or b.end < b.start):
+                        raise ApiError(None, uncertain=True)
                     breaks = current.breaks + (b,) if action=="start_break" else tuple(b if x.end is None and x.start==b.start else x for x in current.breaks)
                     result = replace(current,breaks=breaks)
             except ApiError as exc:
                 if exc.uncertain:
-                    await self.on_change(uid,None)
+                    try:
+                        await self.on_change(uid,None)
+                    except Exception:
+                        pass
                     raise TerminalError("Outcome unknown. Check RotaCloud before trying again.") from None
                 raise TerminalError("Clocking failed. Use the RotaCloud terminal.") from None
             # Update local state from confirmed response, not an additional full read.
