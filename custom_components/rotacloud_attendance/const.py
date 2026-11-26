@@ -1,3 +1,4 @@
+VERSION = "0.7.0"
 DOMAIN = "rotacloud_attendance"
 CONF_TERMINAL = "terminal_id"
 CONF_POLL = "poll_seconds"

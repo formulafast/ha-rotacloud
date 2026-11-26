@@ -110,5 +110,15 @@
         }
       }
     }
+  },
+  "issues": {
+    "yaml_resources": {
+      "title": "RotaCloud dashboard resources use YAML",
+      "description": "Dashboard resources are managed in YAML, so RotaCloud cannot update them automatically. Set both module URLs to /rotacloud_attendance/static/staff-live.js?v={version} and /rotacloud_attendance/static/staff-terminal.js?v={version}, reload dashboard resources, then refresh your browser. Other resources are unchanged."
+    },
+    "frontend_resources": {
+      "title": "RotaCloud dashboard resources need attention",
+      "description": "Attendance remains available, but automatic card resource registration failed. Reload the integration to retry, or add/update these JavaScript module resources: /rotacloud_attendance/static/staff-live.js?v={version} and /rotacloud_attendance/static/staff-terminal.js?v={version}. Keep one entry per file, then refresh your browser."
+    }
   }
 }

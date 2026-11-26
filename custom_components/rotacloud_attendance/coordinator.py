@@ -126,7 +126,7 @@ class AttendanceCoordinator(DataUpdateCoordinator):
             person = self.employees.get(window.user)
             if window.kind != kind or person is None:
                 continue
-            row = grouped.setdefault(window.user, {"name": " ".join((person.first_name, person.last_name)).strip(), "times": []})
+            row = grouped.setdefault(window.user, {"staff_key": str(window.user), "name": " ".join((person.first_name, person.last_name)).strip(), "times": []})
             if window.label not in row["times"]:
                 row["times"].append(window.label)
         return sorted(grouped.values(), key=lambda row: row["name"].casefold())

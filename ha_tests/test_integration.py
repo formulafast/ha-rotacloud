@@ -145,3 +145,19 @@ async def test_all_card_data_is_scoped_to_its_integration(hass, fake_api):
     assert all(state.attributes['config_entry_id'] == entry.entry_id for state in states)
     present = next(state for state in states if state.attributes.get('rotacloud_status') == 'present')
     assert present.attributes['integration_name'] == 'Venue attendance'
+
+async def test_here_count_includes_break_and_leaving_and_exports_running_version(hass, fake_api):
+    from dataclasses import replace
+    from custom_components.rotacloud_attendance.const import VERSION
+    entry = MockConfigEntry(domain=DOMAIN, data=DATA, options=OPTIONS, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    c=entry.runtime_data
+    base=next(iter(c.data.values()))
+    c.async_set_updated_data({i:replace(base,user_id=i,status=status,previous_day=previous) for i,(status,previous) in enumerate([('here',False),('break',False),('leaving',False),('due',False),('here',True)],1)})
+    await hass.async_block_till_done()
+    counts={x.attributes.get('rotacloud_status'):x for x in hass.states.async_all() if x.attributes.get('rotacloud_kind')=='count'}
+    assert counts['here'].state==counts['present'].state=='3'
+    assert counts['break'].state=='1' and counts['leaving'].state=='1'
+    assert counts['present'].attributes['integration_version']==VERSION
+    assert all('staff_key' in x.attributes for x in hass.states.async_all() if x.attributes.get('rotacloud_kind')=='staff')

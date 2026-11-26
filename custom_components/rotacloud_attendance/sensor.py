@@ -2,7 +2,7 @@
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .const import timing_options
+from .const import timing_options, VERSION
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = entry.runtime_data
@@ -31,6 +31,7 @@ class CountSensor(CoordinatorEntity, SensorEntity):
         if self.status == "present":
             result["display_options"] = timing_options(self.coordinator.entry.options)
             result["config_entry_id"] = self.coordinator.entry.entry_id
+            result["integration_version"] = VERSION
             result["integration_name"] = self.coordinator.entry.title
             result["day_start"] = self.coordinator.day
             result["planning_available"] = self.coordinator.planning_available
@@ -42,7 +43,7 @@ class CountSensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         if self.status in ("on_leave", "available"):
             return len(self.coordinator.planning_rows(self.status)) if self.coordinator.planning_available else None
-        states = {"here","break","leaving"} if self.status=="present" else {self.status}
+        states = {"here","break","leaving"} if self.status in ("present", "here") else {self.status}
         return sum(s.status in states and not s.previous_day for s in (self.coordinator.data or {}).values())
 
 class StaffSensor(CoordinatorEntity, SensorEntity):
@@ -50,7 +51,7 @@ class StaffSensor(CoordinatorEntity, SensorEntity):
     _unrecorded_attributes = frozenset({"scheduled_start","scheduled_end","clock_in","clock_out",
                                       "active_break_start","completed_break_seconds","clock_in_delta_seconds",
                                       "clock_out_delta_seconds","shifts","shift_duration_seconds","staff_name",
-                                      "previous_day","total_break_seconds_today","break_warning"})
+                                      "previous_day","total_break_seconds_today","break_warning","staff_key"})
     def __init__(self, coordinator, entry_id, staff):
         super().__init__(coordinator)
         self.uid = staff.user_id
@@ -66,7 +67,7 @@ class StaffSensor(CoordinatorEntity, SensorEntity):
         if not staff:
             return {"rotacloud_kind":"staff"}
         a,s = staff.attendance, staff.scheduled
-        return {"rotacloud_kind":"staff","config_entry_id":self.coordinator.entry.entry_id,"staff_name":staff.name,"scheduled_start":s.start if s else None,"scheduled_end":s.end if s else None,
+        return {"rotacloud_kind":"staff","config_entry_id":self.coordinator.entry.entry_id,"staff_key":str(self.uid),"staff_name":staff.name,"scheduled_start":s.start if s else None,"scheduled_end":s.end if s else None,
                 "clock_in":a.clock_in if a else None,"clock_out":a.clock_out if a else None,
                 "active_break_start":staff.active_break_start,"completed_break_seconds":staff.completed_break_seconds,
                 "clock_in_delta_seconds":staff.clock_in_delta_seconds,"clock_out_delta_seconds":staff.clock_out_delta_seconds,
