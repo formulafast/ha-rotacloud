@@ -27,10 +27,11 @@ class CountSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"RotaCloud {status.title()}"
     @property
     def extra_state_attributes(self):
-        result = {"rotacloud_kind":"count","rotacloud_status":self.status,"last_api_refresh":self.coordinator.last_api_refresh}
+        result = {"rotacloud_kind":"count","rotacloud_status":self.status,"config_entry_id":self.coordinator.entry.entry_id,"last_api_refresh":self.coordinator.last_api_refresh}
         if self.status == "present":
             result["display_options"] = timing_options(self.coordinator.entry.options)
             result["config_entry_id"] = self.coordinator.entry.entry_id
+            result["integration_name"] = self.coordinator.entry.title
             result["day_start"] = self.coordinator.day
             result["planning_available"] = self.coordinator.planning_available
         if self.status in ("on_leave", "available"):
@@ -65,7 +66,7 @@ class StaffSensor(CoordinatorEntity, SensorEntity):
         if not staff:
             return {"rotacloud_kind":"staff"}
         a,s = staff.attendance, staff.scheduled
-        return {"rotacloud_kind":"staff","staff_name":staff.name,"scheduled_start":s.start if s else None,"scheduled_end":s.end if s else None,
+        return {"rotacloud_kind":"staff","config_entry_id":self.coordinator.entry.entry_id,"staff_name":staff.name,"scheduled_start":s.start if s else None,"scheduled_end":s.end if s else None,
                 "clock_in":a.clock_in if a else None,"clock_out":a.clock_out if a else None,
                 "active_break_start":staff.active_break_start,"completed_break_seconds":staff.completed_break_seconds,
                 "clock_in_delta_seconds":staff.clock_in_delta_seconds,"clock_out_delta_seconds":staff.clock_out_delta_seconds,
