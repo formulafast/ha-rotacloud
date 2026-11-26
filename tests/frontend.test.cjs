@@ -109,22 +109,19 @@ async function liveFixture(t,width=1440){
     const now=Math.floor(Date.now()/1000);window.states={};
     for(const status of ["present","here","break","leaving","due","late","gone"])states['sensor.count_'+status]={entity_id:'sensor.count_'+status,state:"1",attributes:{rotacloud_kind:"count",rotacloud_status:status,last_api_refresh:now}};
     for(const [name,status,deltaIn,deltaOut] of [["Alex","late",300,null],["Morgan","gone",-240,600],["Taylor","here",-60,null],["Casey","gone",120,-300]])states['sensor.'+name]={entity_id:'sensor.'+name,state:status,attributes:{rotacloud_kind:"staff",staff_name:name,scheduled_start:now-3600,scheduled_end:now+3600,clock_in:now-3600+deltaIn,clock_out:deltaOut===null?null:now+3600+deltaOut,clock_in_delta_seconds:deltaIn,clock_out_delta_seconds:deltaOut,completed_break_seconds:180,shift_duration_seconds:7200}};
-    window.card=document.createElement("ff-staff-live");card.setConfig({});card.hass={states,config:{time_zone:"Europe/London"}};document.body.append(card);
+    window.card=document.createElement("ff-staff-table");card.setConfig({});card.hass={states,config:{time_zone:"Europe/London"}};document.body.append(card);
   });return page;
 }
-test("live filter accepts one click across HA updates between pointer down and up",async t=>{
-  const page=await liveFixture(t);const button=page.getByRole("button",{name:"Filter: Gone",exact:true});
-  const box=await button.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
-  await page.evaluate(()=>{window.buttonBefore=card.shadowRoot.querySelector('[data-filter="gone"]');for(let i=0;i<5;i++){states["sensor.count_present"].attributes.last_api_refresh++;card.hass={states};}});
-  await page.mouse.up();assert.equal(await button.getAttribute("aria-pressed"),"true");
-  assert.equal(await page.evaluate(()=>buttonBefore===card.shadowRoot.querySelector('[data-filter="gone"]')),true);
-  assert.equal(await page.locator("tbody tr").count(),2);
-  await page.getByRole("button",{name:"Filter: Clocked in",exact:true}).focus();await page.keyboard.press("Enter");
-  assert.equal(await page.locator("tbody tr").count(),4);
+test("status filter accepts one click across HA updates between pointer down and up",async t=>{
+ const page=await modularFixture(t);await page.evaluate(()=>{window.table=addCard('ff-staff-table');window.counter=addCard('ff-staff-status',{status:'gone'});});
+ const button=page.locator('ff-staff-status').getByRole('button',{name:'Gone',exact:true}),box=await button.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
+ await page.evaluate(()=>{window.buttonBefore=counter.shadowRoot.querySelector('button');for(let i=0;i<5;i++){states['sensor.count_gone'].attributes.last_api_refresh++;counter.hass={...hass,states};table.hass={...hass,states};}});
+ await page.mouse.up();assert.equal(await button.getAttribute('aria-pressed'),'true');assert.equal(await page.evaluate(()=>buttonBefore===counter.shadowRoot.querySelector('button')),true);assert.equal(await page.locator('ff-staff-table tbody tr').count(),2);
+ await button.focus();await page.keyboard.press('Enter');assert.equal(await button.getAttribute('aria-pressed'),'false');assert.equal(await page.locator('ff-staff-table tbody tr').count(),4);
 });
 test("live status/timing pills, colours, centred columns, icons and completion flags",async t=>{
   const page=await liveFixture(t);
-  assert.equal(await page.locator(".pill.status").count(),4);assert.equal(await page.locator(".counts svg").count(),9);
+  assert.equal(await page.locator(".pill.status").count(),4);assert.equal(await page.locator(".counts svg").count(),0);
   assert.equal(await page.getByRole("img",{name:"Shift completed",exact:true}).count(),2);
   const late=page.locator(".timing").filter({hasText:"5m late"}).first();assert.equal(await late.evaluate(n=>getComputedStyle(n).color),"rgb(239, 68, 68)");
   const early=page.locator(".timing").filter({hasText:"4m early"});assert.equal(await early.evaluate(n=>getComputedStyle(n).color),"rgb(234, 179, 8)");
@@ -144,18 +141,16 @@ test("live applies integration thresholds/colours independently and has mobile s
   if(process.env.FF_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.FF_SCREENSHOT_DIR,"live-attendance-mobile.png"),fullPage:true});
 });
 
-test("dashboard has no logo, has timestamp footer and only selected counters are coloured",async t=>{
- const page=await liveFixture(t);
- assert.equal(await page.getByRole('heading',{name:'Dashboard',exact:true}).count(),1);
- assert.equal(await page.locator('.logo').count(),0);
- assert.equal(await page.locator('tfoot').count(),1);
- assert.equal((await page.locator('tfoot').textContent()).includes('cached'),false);
- const neutral=await page.locator('[data-filter="here"] strong').evaluate(n=>getComputedStyle(n).color);
- assert.equal(neutral,'rgb(255, 255, 255)');
+test("retired Dashboard and Clocked In card are absent; counters start unselected",async t=>{
+ const page=await modularFixture(t);await page.evaluate(()=>{for(const status of ['here','break','leaving','due','late','gone','on_leave','available'])addCard('ff-staff-status',{status});addCard('ff-staff-table');});
+ assert.equal(await page.evaluate(()=>customElements.get('ff-staff-live')===undefined),true);
+ assert.equal(await page.evaluate(()=>window.customCards.some(c=>c.type==='ff-staff-live')),false);
+ assert.equal(await page.locator('[data-filter="all"]').count(),0);assert.equal(await page.locator('button[aria-pressed="true"]').count(),0);
+ assert.match(await page.locator('tfoot').textContent(),/^Last API refresh: /);
+ assert.equal(await page.locator('[data-filter="here"] strong').evaluate(n=>getComputedStyle(n).color),'rgb(255, 255, 255)');
  assert.equal(await page.locator('[data-filter="here"] svg').evaluate(n=>getComputedStyle(n).color),'rgb(34, 197, 94)');
- await page.getByRole('button',{name:'Filter: Here',exact:true}).click();
- assert.equal(await page.locator('[data-filter="here"] strong').evaluate(n=>getComputedStyle(n).color),'rgb(34, 197, 94)');
- assert.equal(await page.locator('[data-filter="all"] strong').evaluate(n=>getComputedStyle(n).color),neutral);
+ await page.locator('[data-filter="here"]').click();assert.equal(await page.locator('[data-filter="here"] strong').evaluate(n=>getComputedStyle(n).color),'rgb(34, 197, 94)');
+ await page.locator('[data-filter="here"]').click();assert.equal(await page.locator('button[aria-pressed="true"]').count(),0);
 });
 test("manual refresh calls HA once per press and never refreshes on render",async t=>{
  const page=await liveFixture(t);
@@ -165,31 +160,10 @@ test("manual refresh calls HA once per press and never refreshes on render",asyn
  await page.waitForFunction(()=>!card.refreshing);
  assert.deepEqual(await page.evaluate(()=>refreshCalls),[{type:'rotacloud_attendance/refresh',entry_id:'example-entry'}]);
 });
-test("leave/availability and previous-day attendance have separate tables and break warnings",async t=>{
- const page=await liveFixture(t);
- await page.evaluate(()=>{
-  states['sensor.count_present'].attributes.day_start=Math.floor(Date.now()/1000)-7200;
-  states['sensor.count_present'].attributes.planning_available=true;
-  states['sensor.leave']={entity_id:'sensor.leave',state:'1',attributes:{rotacloud_kind:'count',rotacloud_status:'on_leave',rows:[{name:'Riley',times:['All Day']}]}};
-  states['sensor.available']={entity_id:'sensor.available',state:'1',attributes:{rotacloud_kind:'count',rotacloud_status:'available',rows:[{name:'Jordan',times:['09:00 – 13:00','17:00 – 21:00']}]}};
-  states['sensor.old']={entity_id:'sensor.old',state:'here',attributes:{rotacloud_kind:'staff',staff_name:'Previous Day',previous_day:true,clock_in:Math.floor(Date.now()/1000)-86400,completed_break_seconds:0}};
-  states['sensor.Alex'].attributes.break_warning=true;
-  states['sensor.Alex'].attributes.active_break_start=Math.floor(Date.now()/1000)-61;
-  card.hass={...card._hass,states};
- });
- assert.equal(await page.locator('.primary tbody tr').count(),4);
- assert.equal(await page.locator('.previous tbody tr').count(),1);
- assert.equal(await page.getByRole('heading',{name:'Still Clocked In From Yesterday',exact:true}).count(),1);
- assert.equal(await page.locator('.planning tbody tr').count(),2);
+test("daily break warnings remain beside totals in the standalone table",async t=>{
+ const page=await liveFixture(t);await page.evaluate(()=>{states['sensor.Alex'].attributes.break_warning=true;states['sensor.Alex'].attributes.active_break_start=Date.now()/1000-60;card.hass={...card._hass,states};});
  assert.equal(await page.getByRole('img',{name:'Break minimum not met',exact:true}).count(),1);
- assert.equal((await page.locator('.primary tbody tr').first().locator('td').nth(5).textContent()).includes('active'),false);
- await page.getByRole('button',{name:'Filter: On Leave',exact:true}).click();
- assert.equal(await page.locator('.planning tbody tr').count(),1);
- assert.match(await page.locator('.planning').textContent(),/Riley.*All Day/);
- await page.getByRole('button',{name:'Filter: Available',exact:true}).click();
- assert.match(await page.locator('.planning').textContent(),/Jordan.*09:00.*21:00/);
- await page.getByRole('button',{name:'Filter: Clocked in',exact:true}).click();
- if(process.env.FF_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.FF_SCREENSHOT_DIR,'dashboard-planning.png'),fullPage:true});
+ assert.equal((await page.locator('tbody tr').first().locator('td').nth(5).textContent()).includes('active'),false);
 });
 test("terminal supports focused physical keypad and separates break controls",async t=>{
  const page=await fixture(t);
@@ -221,15 +195,15 @@ async function modularFixture(t,width=1440){
 test('card picker and visual editors cover every card without a PIN-length field',async t=>{
  const page=await modularFixture(t);await loadCard(page,'staff-terminal.js');
  const result=await page.evaluate(()=>{
-  const kinds=['ff-staff-status','ff-staff-table','ff-staff-live','ff-staff-terminal'];
+  const kinds=['ff-staff-status','ff-staff-table','ff-staff-terminal'];
   return kinds.map(type=>{const constructor=customElements.get(type),stub=constructor.getStubConfig(hass),editor=constructor.getConfigElement();editor.setConfig({type:'custom:'+type,...stub});editor.hass=hass;document.body.append(editor);return {type,stub,fields:[...editor.shadowRoot.querySelectorAll('input,select')].map(x=>x.getAttribute('aria-label')),registered:window.customCards.some(c=>c.type===type)};});
  });
  assert.ok(result.every(x=>x.registered&&x.stub.entry_id==='entry-a'));
  assert.ok(result[0].fields.includes('Click behaviour'));
  assert.ok(result[1].fields.includes('Visible columns')===false);
  assert.ok(result[1].fields.includes('Clock-in'));
- assert.ok(result[3].fields.includes('Layout'));
- assert.ok(!result[3].fields.some(x=>/pin/i.test(x)));
+ assert.ok(result[2].fields.includes('Layout'));
+ assert.ok(!result[2].fields.some(x=>/pin/i.test(x)));
  // A real editor change emits the full configuration, preserving unknown/legacy fields.
  await page.evaluate(()=>{const e=document.querySelector('ff-rotacloud-editor');e.setConfig({type:'custom:ff-staff-status',status:'here',group:'team',custom_option:7});e.addEventListener('config-changed',event=>window.edited=event.detail.config);});
  await page.getByRole('textbox',{name:'Title',exact:true}).first().fill('Working now');
@@ -365,4 +339,54 @@ test('Status click behaviours preserve grouping and use safe HA navigation/detai
  assert.equal(await page.evaluate(()=>location.pathname),'/staff/terminal');assert.equal(await page.evaluate(()=>navigation),1);
  await page.evaluate(()=>{actionCard.setConfig({status:'here',tap_action:'navigate',navigation_path:'//external.example'});actionCard.tapStatus();});
  assert.equal(await page.evaluate(()=>navigation),1);
+});
+
+test('Here includes break and leaving; repeated selection restores all rows',async t=>{
+ const page=await modularFixture(t);
+ await page.evaluate(()=>{
+  for(const [name,status] of [['On break','break'],['Leaving soon','leaving']])states['sensor.'+status]={entity_id:'sensor.'+status,state:status,attributes:{rotacloud_kind:'staff',staff_name:name,config_entry_id:'entry-a',clock_in:Date.now()/1000-2000}};
+  states['sensor.count_here'].state='3';window.hass={...hass,states};window.table=addCard('ff-staff-table');window.counter=addCard('ff-staff-status',{status:'here'});
+ });
+ assert.equal(await page.locator('tbody tr').count(),6);
+ await page.locator('ff-staff-status').getByRole('button',{name:'Here',exact:true}).click();
+ assert.equal(await page.locator('tbody tr').count(),3);
+ assert.equal(await page.locator('ff-staff-status strong').textContent(),'3');
+ assert.match(await page.locator('tbody').textContent(),/On break/);assert.match(await page.locator('tbody').textContent(),/Leaving soon/);
+ await page.locator('ff-staff-status').getByRole('button',{name:'Here',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),6);
+});
+
+test('optional Table exclusion uses stable staff keys, not duplicate names, with no requests',async t=>{
+ const page=await modularFixture(t);
+ await page.evaluate(()=>{
+  states['sensor.Taylor'].attributes.staff_key='present';states['sensor.Casey'].attributes.staff_key='scheduled';
+  states['sensor.Casey'].attributes.shifts=[{id:1}];
+  states['sensor.available'].attributes.rows=[{staff_key:'present',name:'Same Name',times:['All Day']},{staff_key:'scheduled',name:'Same Name',times:['All Day']},{staff_key:'free',name:'Same Name',times:['14:00 – 18:00']}];
+  window.hass={...hass,states};window.table=addCard('ff-staff-table',{table_type:'availability'});
+ });
+ assert.equal(await page.locator('tbody tr').count(),3);
+ await page.evaluate(()=>table.setConfig({...table.config,exclude_scheduled_here:true}));
+ assert.equal(await page.locator('tbody tr').count(),1);assert.match(await page.locator('tbody').textContent(),/14:00/);
+ await page.evaluate(()=>table.setConfig({...table.config,exclude_scheduled_here:false}));assert.equal(await page.locator('tbody tr').count(),3);
+ assert.equal(await page.evaluate(()=>wsCalls.length),0);
+ const fields=await page.evaluate(()=>{const editor=customElements.get('ff-staff-table').getConfigElement();editor.setConfig({});return [...editor.shadowRoot.querySelectorAll('input')].map(n=>n.getAttribute('aria-label'));});
+ assert.ok(fields.includes('Exclude Staff already Scheduled/Here'));
+});
+
+test('Terminal Start Break is green/play and End Break is yellow/pause',async t=>{
+ const page=await fixture(t);await page.evaluate(()=>window.status='here');await pin(page);
+ const start=page.getByRole('button',{name:'START BREAK',exact:true});assert.match(await start.getAttribute('class'),/green/);assert.equal(await start.locator('svg path').getAttribute('d'),'M8 4l12 8-12 8Z');
+ await start.click();await page.getByRole('button',{name:'Done',exact:true}).click();await pin(page);
+ const end=page.getByRole('button',{name:'END BREAK',exact:true});assert.match(await end.getAttribute('class'),/yellow/);assert.equal(await end.evaluate(n=>getComputedStyle(n).backgroundColor),'rgb(234, 179, 8)');assert.equal(await end.locator('svg path').getAttribute('d'),'M7 4v16M17 4v16');
+});
+
+test('legacy Clocked In status card is retired rather than becoming a duplicate Here',async t=>{
+ const page=await modularFixture(t);await page.evaluate(()=>{window.old=addCard('ff-staff-status',{status:'all'});});
+ assert.equal(await page.locator('ff-staff-status').isVisible(),false);
+});
+
+test('linked tables ignore saved defaults until a Status card is selected',async t=>{
+ const page=await modularFixture(t);await page.evaluate(()=>{window.table=addCard('ff-staff-table',{filter:'gone'});window.counter=addCard('ff-staff-status',{status:'gone'});});
+ assert.equal(await page.locator('tbody tr').count(),4);
+ await page.locator('ff-staff-status').getByRole('button',{name:'Gone',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),2);
+ await page.locator('ff-staff-status').getByRole('button',{name:'Gone',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),4);
 });

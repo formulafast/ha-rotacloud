@@ -1,10 +1,11 @@
 {
   "domain": "rotacloud_attendance",
   "name": "RotaCloud Attendance",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "dependencies": [
     "websocket_api",
-    "http"
+    "http",
+    "lovelace"
   ],
   "config_flow": true,
   "documentation": "https://github.com/formulafast/ha-rotacloud",

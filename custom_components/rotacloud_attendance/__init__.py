@@ -13,6 +13,8 @@ async def async_setup_entry(hass, entry):
 
     client = Client(async_get_clientsession(hass), entry.data["api_key"], entry.options.get(CONF_TERMINAL, entry.data[CONF_TERMINAL]),
                     activate_terminal=entry.options.get(CONF_ACTIVATE_TERMINAL, False), device_id="home-assistant-" + entry.entry_id)
+    from .resources import async_register_resources
+
     coordinator = AttendanceCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
@@ -22,6 +24,7 @@ async def async_setup_entry(hass, entry):
         await hass.http.async_register_static_paths([StaticPathConfig(
             "/rotacloud_attendance/static", str(Path(__file__).parent / "frontend"), True)])
         hass.data[static_key] = True
+    await async_register_resources(hass)
     entry.async_on_unload(entry.add_update_listener(_reload))
     entry.async_on_unload(coordinator.listen_for_refresh())
     entry.async_on_unload(coordinator.listen_for_time())
