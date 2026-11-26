@@ -134,3 +134,14 @@ async def test_threshold_controls_are_boxes_with_descriptions(hass):
     numbers=[f for f in fields if f["name"].endswith(("_minutes","_hours"))]
     assert len(numbers)==16
     assert all(f["selector"]["number"]["mode"]=="box" for f in numbers)
+
+async def test_all_card_data_is_scoped_to_its_integration(hass, fake_api):
+    entry = MockConfigEntry(domain=DOMAIN, title='Venue attendance', data=DATA, options=OPTIONS, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    states = [state for state in hass.states.async_all() if state.attributes.get('rotacloud_kind') in ('count', 'staff')]
+    assert states
+    assert all(state.attributes['config_entry_id'] == entry.entry_id for state in states)
+    present = next(state for state in states if state.attributes.get('rotacloud_status') == 'present')
+    assert present.attributes['integration_name'] == 'Venue attendance'

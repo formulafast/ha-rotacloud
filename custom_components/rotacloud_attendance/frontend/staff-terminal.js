@@ -1,3 +1,4 @@
+import {subscribeTick,defaultEntry,editorFor,registerCard} from './staff-shared.js?v=0.6.0';
 // Live HA terminal. All attendance decisions and PIN checks run on the server.
 class FFStaffTerminal extends HTMLElement {
   constructor() {
@@ -18,15 +19,19 @@ class FFStaffTerminal extends HTMLElement {
     };
   }
   setConfig(config) {
-    if (!config.entry_id) throw new Error("Set the RotaCloud integration entry_id.");
+
     const length = config.pin_length ?? 4;
     if (!Number.isInteger(length) || length < 1 || length > 12) throw new Error("pin_length must be 1–12.");
     this.config = {...config, pin_length: length};
     this.reset();
   }
+  static getConfigElement() { return editorFor("terminal"); }
+  static getStubConfig(hass) { return {entry_id:defaultEntry(hass)}; }
+  entry() { return this.config?.entry_id || defaultEntry(this._hass); }
+  getGridOptions() { return {columns:12,rows:"auto",min_columns:6}; }
   set hass(value) {
-    if (this._hass && (this._hass.connection !== value.connection || this._hass.user?.id !== value.user?.id)) this.reset();
-    const changed = this._hass?.user?.is_admin !== value.user?.is_admin;
+    if (this._hass && (this._hass.connection !== value.connection || this._hass.user?.id !== value.user?.id || (this.config?.entry_id||defaultEntry(this._hass))!==(this.config?.entry_id||defaultEntry(value)))) this.reset();
+    const changed = this._hass?.user?.is_admin !== value.user?.is_admin || defaultEntry(this._hass)!==defaultEntry(value);
     this._hass = value;
     if (changed || !this.shadowRoot.firstChild) this.render();
   }
@@ -34,15 +39,14 @@ class FFStaffTerminal extends HTMLElement {
     this.render();
     this.tabIndex = 0;
     this.addEventListener("keydown", this.onKey);
-    this.ticker = setInterval(() => {
-      if(document.hidden) return;
+    this.untick = subscribeTick(() => {
       const node = this.shadowRoot.querySelector("[data-break]");
       if (node && this.person?.active_break_start) node.textContent = this.duration(Date.now()/1000-this.person.active_break_start);
-    }, 60000);
+    });
   }
   disconnectedCallback() {
     this.removeEventListener("keydown", this.onKey);
-    clearInterval(this.ticker);
+    this.untick?.();this.untick=null;
     this.reset();
   }
   getCardSize() { return 9; }
@@ -68,7 +72,7 @@ class FFStaffTerminal extends HTMLElement {
   }
   arm(ms) { clearTimeout(this.timeout); this.timeout = setTimeout(() => this.reset(), ms); }
   press(value) {
-    if (this.busy || this.stage !== "pin" || !this._hass?.user?.is_admin) return;
+    if (this.busy || this.stage !== "pin" || !this._hass?.user?.is_admin || !this.entry()) return;
     this.error = "";
     if (value === "clear") this.pin = "";
     else if (value === "back") this.pin = this.pin.slice(0,-1);
@@ -81,7 +85,7 @@ class FFStaffTerminal extends HTMLElement {
     let timeout;
     try {
       return await Promise.race([
-        this._hass.callWS({type: "rotacloud_attendance/terminal/"+command, entry_id: this.config.entry_id, ...data}),
+        this._hass.callWS({type: "rotacloud_attendance/terminal/"+command, entry_id: this.entry(), ...data}),
         new Promise((_,reject) => { timeout = setTimeout(() => reject(new Error("timeout")), 70000); })
       ]);
     } catch (err) {
@@ -135,11 +139,14 @@ class FFStaffTerminal extends HTMLElement {
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;color:#fff;font-family:Nunito,Arial,sans-serif}*{box-sizing:border-box}
       main{min-height:560px;background:#121212;border:1px solid #333;border-radius:18px;padding:clamp(16px,3vw,40px);display:flex;align-items:center;flex-direction:column;gap:20px}
-      header{text-align:center;border-bottom:1px solid #333;width:100%;padding-bottom:20px}h1{font-family:Montserrat,Arial,sans-serif;font-size:clamp(24px,4vw,36px);font-weight:900;font-style:italic;margin:0;letter-spacing:-.04em}h1 span{color:#ff6600}
+      header{overflow-wrap:anywhere;text-align:center;border-bottom:1px solid #333;width:100%;padding-bottom:20px}h1{font-family:Montserrat,Arial,sans-serif;font-size:clamp(24px,4vw,36px);font-weight:900;font-style:italic;margin:0;letter-spacing:-.04em}h1 span{color:#ff6600}
       .sub{color:#b8b8b8;font-size:13px;letter-spacing:.13em;margin-top:6px;text-transform:uppercase}h2{margin:0;font-size:26px;text-align:center}p{margin:0;color:#bbb;text-align:center}.dots{font-size:24px;letter-spacing:10px;color:#ff6600;min-height:30px}
       .keys{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:min(100%,360px)}button,select{font:inherit;min-height:62px;border:1px solid #404040;border-radius:10px;background:#252525;color:white;touch-action:manipulation}button{cursor:pointer}button:focus-visible,select:focus-visible{outline:3px solid #ff6600}button:disabled{opacity:.5;cursor:wait}.keys button{font-size:25px}.keys .small{font-size:15px}
       .actions{width:min(100%,460px);display:grid;gap:12px}.action{font-size:20px;font-weight:800}.green{background:#176b43;border-color:#258f5d}.amber{background:#76520d;border-color:#b58a2c}.red{background:#842e2e;border-color:#b74b4b}.quiet{min-height:42px;background:transparent;border:0;color:#bbb}.stats{display:grid;gap:12px;width:min(100%,460px)}.stat{border-radius:12px;background:#252525;padding:14px;text-align:center}.stat small{display:block;color:#bbb}.stat strong{display:block;font-size:clamp(24px,4vw,36px);font-variant-numeric:tabular-nums;margin-top:5px}.ok{color:#5bd492;font-size:40px}.err{color:#ff9b9b}.divider{width:min(100%,460px);border:0;border-top:1px solid #333;margin:14px 0}.action-icon{width:23px;height:23px;margin-right:10px;vertical-align:middle;pointer-events:none}#body{width:100%;display:flex;align-items:center;flex-direction:column;gap:18px}select{width:100%;padding:10px}
       </style><main><header><h1>STAFF <span>ATTENDANCE</span></h1><div class="sub">Staff clocking terminal</div></header><section id="body" aria-live="polite"></section></main>`;
+    const heading=this.shadowRoot.querySelector('h1');if(this.config.title)heading.textContent=this.config.title;
+    this.shadowRoot.querySelector('.sub').textContent=this.config.subtitle??'Staff clocking terminal';
+    if(this.config.layout==='compact'){const style=document.createElement('style');style.textContent='main{min-height:0;padding:16px;gap:12px}header{padding-bottom:12px}.stat{padding:10px}.stat strong{font-size:26px}button,select{min-height:48px}.keys{gap:6px}#body{gap:12px}';this.shadowRoot.append(style);}
     const body = this.shadowRoot.querySelector("#body");
     const el = (tag,text,cls,parent=body) => {
       const node = document.createElement(tag);
@@ -160,6 +167,7 @@ class FFStaffTerminal extends HTMLElement {
     };
     if (!this._hass?.user?.is_admin) { el("p","Administrator access is required.","err"); return; }
     if (this.busy) { el("h2","Please wait…"); el("p",this.stage === "actions" ? "Saving attendance…" : "Checking PIN…"); return; }
+    if (!this.entry()) { el("p","Select the RotaCloud integration in the card settings."); return; }
     if (this.stage === "pin") {
       el("h2","Enter your PIN");
       el("div",Array.from({length:this.config.pin_length},(_,i)=>i<this.pin.length?"●":"○").join(""),"dots");
@@ -213,5 +221,4 @@ class FFStaffTerminal extends HTMLElement {
   }
 }
 if(!customElements.get("ff-staff-terminal")) customElements.define("ff-staff-terminal",FFStaffTerminal);
-window.customCards=window.customCards||[];
-window.customCards.push({type:"ff-staff-terminal",name:"Staff attendance terminal",description:"Live RotaCloud clocking inside Home Assistant"});
+registerCard('ff-staff-terminal','RotaCloud Terminal','Live RotaCloud clocking with a visual card editor');
