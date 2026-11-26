@@ -20,14 +20,35 @@ def _positive_id(value):
     return value
 
 
-def _terminal(hass, entry_id):
+def _coordinator(hass, entry_id):
     entry = hass.config_entries.async_get_entry(entry_id)
     if (entry is None or entry.domain != DOMAIN
             or entry.state != ConfigEntryState.LOADED):
         raise TerminalError("RotaCloud integration is not loaded.")
+    return entry.runtime_data
+
+
+def _terminal(hass, entry_id):
+    coordinator = _coordinator(hass, entry_id)
+    entry = coordinator.entry
     if not entry.options.get(CONF_CLOCKING, False):
         raise TerminalError("Enable HA terminal clocking in the integration options first.")
     return entry.runtime_data
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): DOMAIN + "/refresh",
+    vol.Required("entry_id"): str,
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def refresh(hass, connection, msg):
+    try:
+        result = await _coordinator(hass, msg["entry_id"]).async_manual_refresh()
+    except TerminalError as exc:
+        connection.send_error(msg["id"], "refresh_error", str(exc))
+    else:
+        connection.send_result(msg["id"], result)
 
 
 class _ConnectionSession:
@@ -111,4 +132,5 @@ def async_register(hass):
         return
     websocket_api.async_register_command(hass, identify)
     websocket_api.async_register_command(hass, act)
+    websocket_api.async_register_command(hass, refresh)
     hass.data[key] = True

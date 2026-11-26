@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from .api import ApiError, Client, Employee
 from .model import Attendance
+from .planning import age_band, leave_windows, availability_windows
 
 @dataclass(frozen=True, slots=True)
 class Shift:
@@ -29,10 +30,16 @@ class RosterClient:
             if not page:
                 raise ApiError(None)
 
-    async def employees(self):
+    async def employees(self, today):
         rows = await self._list("/users", {"include_deleted": "false"})
-        return {r["id"]: Employee(r["id"], str(r.get("first_name") or ""), str(r.get("last_name") or ""))
+        return {r["id"]: Employee(r["id"], str(r.get("first_name") or ""), str(r.get("last_name") or ""), age_band(r.get("dob"), today))
                 for r in rows if not r.get("deleted") and type(r.get("id")) is int}
+
+    async def planning(self, day):
+        # Read the date once per cached planning batch, never per staff member.
+        leave = await self._list("/leave", {"start":day,"end":day,"include_deleted":"false","include_denied":"false"})
+        available = await self._list("/availability", {"start":day,"end":day})
+        return leave_windows(leave, day) + availability_windows(available, day)
 
     async def shifts(self, start, end):
         rows = await self._list("/shifts", {"start":start,"end":end,"published":"true","include_deleted":"false"})

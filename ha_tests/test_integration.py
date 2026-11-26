@@ -19,6 +19,8 @@ def fake_api():
         "/shifts": [{"id": 1, "user": 1, "start_time": now - 600, "end_time": now + 3600, "published": True}],
         "/users_clocked_in": [{"user": 1, "in_time": now - 600, "shift": 1}],
         "/attendance": [],
+        "/leave": [],
+        "/availability": [],
     }
     async def request(method, path, **kwargs):
         assert method == "GET", "Read-only pilot must never write attendance"
@@ -42,7 +44,7 @@ async def test_setup_entities_refresh_and_unload(hass, fake_api):
     assert len(staff) == 1
     assert staff[0].attributes["staff_name"] == "Example Employee"
     assert staff[0].state == "here"
-    assert fake_api.await_count == 4
+    assert fake_api.await_count == 6
     fake_api.reset_mock()
     await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
@@ -121,3 +123,14 @@ async def test_options_flow_stores_integer_poll(hass, fake_api):
     assert result["type"] == FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.options["poll_seconds"] == 21600
+
+
+async def test_threshold_controls_are_boxes_with_descriptions(hass):
+    from homeassistant.helpers import config_validation as cv
+    from probatio import to_field_list
+    from custom_components.rotacloud_attendance.config_flow import settings
+    import voluptuous as vol
+    fields=to_field_list(vol.Schema(settings({})),custom_serializer=cv.custom_serializer)
+    numbers=[f for f in fields if f["name"].endswith(("_minutes","_hours"))]
+    assert len(numbers)==16
+    assert all(f["selector"]["number"]["mode"]=="box" for f in numbers)

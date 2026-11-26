@@ -19,6 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 ROSTER_TTL = 6 * 3600
 USERS_TTL = 24 * 3600
 HISTORY_TTL = 6 * 3600
+PLANNING_TTL = 6 * 3600
 
 class AttendanceCoordinator(DataUpdateCoordinator):
     def __init__(self, hass, entry, client):
@@ -36,6 +37,12 @@ class AttendanceCoordinator(DataUpdateCoordinator):
         self.dirty_users = True
         self.inflight = False
         self.last_api_refresh = None
+        self.windows = ()
+        self.planning_available = False
+        self.planning_until = 0.0
+        self.dirty_planning = True
+        self._manual_task = None
+        self._last_manual = float("-inf")
         self.io_lock = asyncio.Lock()
         self.terminal = Terminal(client, self._eligible, self._shifts_for, self._terminal_changed,
                                  scheduled_end_for=self._scheduled_end, daily_breaks_for=self._daily_breaks)
@@ -108,7 +115,39 @@ class AttendanceCoordinator(DataUpdateCoordinator):
 
     def _project(self, now, today, tomorrow):
         return snapshot(self.employees,self.shifts,self.active,self.completed,int(now.timestamp()),today,tomorrow,
-                        self.entry.options.get(CONF_LATE,DEFAULT_LATE),self.entry.options.get(CONF_LEAVING,DEFAULT_LEAVING))
+                        self.entry.options.get(CONF_LATE,DEFAULT_LATE),self.entry.options.get(CONF_LEAVING,DEFAULT_LEAVING),
+                        self.entry.options)
+
+    def planning_rows(self, kind):
+        grouped = {}
+        if not self.planning_available:
+            return []
+        for window in self.windows:
+            person = self.employees.get(window.user)
+            if window.kind != kind or person is None:
+                continue
+            row = grouped.setdefault(window.user, {"name": " ".join((person.first_name, person.last_name)).strip(), "times": []})
+            if window.label not in row["times"]:
+                row["times"].append(window.label)
+        return sorted(grouped.values(), key=lambda row: row["name"].casefold())
+
+    async def async_manual_refresh(self):
+        # One shared task across clients; repeated presses cannot create batches.
+        if self._manual_task is not None and not self._manual_task.done():
+            return await asyncio.shield(self._manual_task)
+        wait = 30 - (time.monotonic() - self._last_manual)
+        if wait > 0:
+            raise TerminalError("Please wait %s seconds before refreshing again." % int(wait + 1))
+        self._last_manual = time.monotonic()
+        self._manual_task = self.hass.async_create_task(self._manual_refresh())
+        return await asyncio.shield(self._manual_task)
+
+    async def _manual_refresh(self):
+        self.dirty_users = self.dirty_rota = self.dirty_history = self.dirty_planning = True
+        await self.async_refresh()
+        if not self.last_update_success:
+            raise TerminalError("Unable to refresh attendance. Please try later.")
+        return {"last_api_refresh": self.last_api_refresh, "planning_available": self.planning_available}
 
     def listen_for_refresh(self):
         async def refresh(event):
@@ -118,6 +157,8 @@ class AttendanceCoordinator(DataUpdateCoordinator):
                 self.dirty_rota = True
             elif kind == "user":
                 self.dirty_users = True
+            elif kind in ("leave", "availability"):
+                self.dirty_planning = True
             elif kind != "clock_in":
                 self.dirty_history = True
             await self.async_request_refresh()
@@ -151,12 +192,14 @@ class AttendanceCoordinator(DataUpdateCoordinator):
         new_day = self.day != today
         try:
             # Consume flags before awaiting, so concurrent webhook invalidations aren't lost.
-            users_due = self.dirty_users or mono >= self.users_until
+            users_due = self.dirty_users or mono >= self.users_until or new_day
             rota_due = self.dirty_rota or mono >= self.shifts_until or new_day
             history_due = self.dirty_history or mono >= self.history_until or new_day
+            planning_due = self.dirty_planning or mono >= self.planning_until or new_day
             self.dirty_users = self.dirty_rota = self.dirty_history = False
+            self.dirty_planning = False
             if users_due:
-                self.employees = await self.roster.employees()
+                self.employees = await self.roster.employees(now.astimezone(ZoneInfo(self.hass.config.time_zone)).date())
                 self.users_until = mono + USERS_TTL
             if rota_due:
                 self.shifts = await self.roster.shifts(start,tomorrow)
@@ -169,6 +212,16 @@ class AttendanceCoordinator(DataUpdateCoordinator):
                 self.completed = await self.roster.completed(start,tomorrow)
                 self.history_until = mono + HISTORY_TTL
             self.active = active
+            if planning_due:
+                try:
+                    self.windows = await self.roster.planning(now.astimezone(ZoneInfo(self.hass.config.time_zone)).date().isoformat())
+                    self.planning_available = True
+                    self.planning_until = mono + PLANNING_TTL
+                except (ApiError, ValueError, TypeError, KeyError, AttributeError):
+                    # Missing planning permissions must not hide valid attendance.
+                    self.windows = ()
+                    self.planning_available = False
+                    self.planning_until = mono + 900
             self.day = today
             self.last_api_refresh = int(datetime.now(timezone.utc).timestamp())
             return self._project(now,today,tomorrow)
@@ -176,6 +229,7 @@ class AttendanceCoordinator(DataUpdateCoordinator):
             self.dirty_users |= users_due and mono >= self.users_until
             self.dirty_rota |= rota_due
             self.dirty_history |= history_due
+            self.dirty_planning |= planning_due
             if exc.status in (401,403):
                 raise ConfigEntryAuthFailed("RotaCloud authentication failed") from None
             raise UpdateFailed("RotaCloud rate limited; requests paused" if exc.status==429 else "RotaCloud attendance refresh failed") from None

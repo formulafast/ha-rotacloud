@@ -26,6 +26,7 @@ class Employee:
     id: int
     first_name: str
     last_name: str
+    age_band: str | None = None
 
 
 class Client:
