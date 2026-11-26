@@ -19,7 +19,35 @@
           "clock_out_early_minutes": "Clock out early threshold (minutes)",
           "clock_out_early_color": "Clock out early pill colour",
           "clock_out_late_minutes": "Clock out late threshold (minutes)",
-          "clock_out_late_color": "Clock out late pill colour"
+          "clock_out_late_color": "Clock out late pill colour",
+          "break_under18_minimum_minutes": "Age under 18 \u00b7 Minimum break time (mins)",
+          "break_under18_qualifying_hours": "Age under 18 \u00b7 Qualifying shift length \u2014 hours",
+          "break_under18_qualifying_minutes": "Age under 18 \u00b7 Qualifying shift length \u2014 minutes",
+          "break_under18_warning_hours": "Age under 18 \u00b7 Show warning after \u2014 hours",
+          "break_under18_warning_minutes": "Age under 18 \u00b7 Show warning after \u2014 minutes",
+          "break_adult_minimum_minutes": "Age 18+ \u00b7 Minimum break time (mins)",
+          "break_adult_qualifying_hours": "Age 18+ \u00b7 Qualifying shift length \u2014 hours",
+          "break_adult_qualifying_minutes": "Age 18+ \u00b7 Qualifying shift length \u2014 minutes",
+          "break_adult_warning_hours": "Age 18+ \u00b7 Show warning after \u2014 hours",
+          "break_adult_warning_minutes": "Age 18+ \u00b7 Show warning after \u2014 minutes"
+        },
+        "data_description": {
+          "late_minutes": "Grace after scheduled start before an unclocked employee is marked Late. Does not change attendance or payroll.",
+          "leaving_minutes": "Minutes before scheduled finish to mark a clocked-in employee as Leaving.",
+          "clock_in_early_minutes": "Show this timing pill only when the difference exceeds this many minutes. Display only; attendance is unchanged.",
+          "clock_in_late_minutes": "Show this timing pill only when the difference exceeds this many minutes. Display only; attendance is unchanged.",
+          "clock_out_early_minutes": "Show this timing pill only when the difference exceeds this many minutes. Display only; attendance is unchanged.",
+          "clock_out_late_minutes": "Show this timing pill only when the difference exceeds this many minutes. Display only; attendance is unchanged.",
+          "break_under18_minimum_minutes": "Set to 0 to disable warnings for this age band. Minimum recorded break time required in the current clocking.",
+          "break_under18_qualifying_hours": "Actual work in the current clocking, excluding recorded breaks. Combine the hours and minutes fields.",
+          "break_under18_qualifying_minutes": "Actual work in the current clocking, excluding recorded breaks. Combine the hours and minutes fields.",
+          "break_under18_warning_hours": "Elapsed time since the current clock-in, including breaks. A warning appears only when the qualifying work time is also reached and the minimum break is not met.",
+          "break_under18_warning_minutes": "Elapsed time since the current clock-in, including breaks. A warning appears only when the qualifying work time is also reached and the minimum break is not met.",
+          "break_adult_minimum_minutes": "Set to 0 to disable warnings for this age band. Minimum recorded break time required in the current clocking.",
+          "break_adult_qualifying_hours": "Actual work in the current clocking, excluding recorded breaks. Combine the hours and minutes fields.",
+          "break_adult_qualifying_minutes": "Actual work in the current clocking, excluding recorded breaks. Combine the hours and minutes fields.",
+          "break_adult_warning_hours": "Elapsed time since the current clock-in, including breaks. A warning appears only when the qualifying work time is also reached and the minimum break is not met.",
+          "break_adult_warning_minutes": "Elapsed time since the current clock-in, including breaks. A warning appears only when the qualifying work time is also reached and the minimum break is not met."
         }
       }
     },
@@ -49,9 +77,37 @@
           "clock_out_early_color": "Clock out early pill colour",
           "clock_out_late_minutes": "Clock out late threshold (minutes)",
           "clock_out_late_color": "Clock out late pill colour",
-          "terminal_id": "RotaCloud terminal ID"
+          "terminal_id": "RotaCloud terminal ID",
+          "break_under18_minimum_minutes": "Age under 18 \u00b7 Minimum break time (mins)",
+          "break_under18_qualifying_hours": "Age under 18 \u00b7 Qualifying shift length \u2014 hours",
+          "break_under18_qualifying_minutes": "Age under 18 \u00b7 Qualifying shift length \u2014 minutes",
+          "break_under18_warning_hours": "Age under 18 \u00b7 Show warning after \u2014 hours",
+          "break_under18_warning_minutes": "Age under 18 \u00b7 Show warning after \u2014 minutes",
+          "break_adult_minimum_minutes": "Age 18+ \u00b7 Minimum break time (mins)",
+          "break_adult_qualifying_hours": "Age 18+ \u00b7 Qualifying shift length \u2014 hours",
+          "break_adult_qualifying_minutes": "Age 18+ \u00b7 Qualifying shift length \u2014 minutes",
+          "break_adult_warning_hours": "Age 18+ \u00b7 Show warning after \u2014 hours",
+          "break_adult_warning_minutes": "Age 18+ \u00b7 Show warning after \u2014 minutes"
         },
-        "description": "Activating the configured terminal opens that terminal in RotaCloud when it is inactive. Use a dedicated terminal ID for HA. Timing pills appear only beyond their threshold."
+        "description": "Activating the configured terminal opens that terminal in RotaCloud when it is inactive. Use a dedicated terminal ID for HA. Timing pills appear only beyond their threshold.",
+        "data_description": {
+          "late_minutes": "Grace after scheduled start before an unclocked employee is marked Late. Does not change attendance or payroll.",
+          "leaving_minutes": "Minutes before scheduled finish to mark a clocked-in employee as Leaving.",
+          "clock_in_early_minutes": "Show this timing pill only when the difference exceeds this many minutes. Display only; attendance is unchanged.",
+          "clock_in_late_minutes": "Show this timing pill only when the difference exceeds this many minutes. Display only; attendance is unchanged.",
+          "clock_out_early_minutes": "Show this timing pill only when the difference exceeds this many minutes. Display only; attendance is unchanged.",
+          "clock_out_late_minutes": "Show this timing pill only when the difference exceeds this many minutes. Display only; attendance is unchanged.",
+          "break_under18_minimum_minutes": "Set to 0 to disable warnings for this age band. Minimum recorded break time required in the current clocking.",
+          "break_under18_qualifying_hours": "Actual work in the current clocking, excluding recorded breaks. Combine the hours and minutes fields.",
+          "break_under18_qualifying_minutes": "Actual work in the current clocking, excluding recorded breaks. Combine the hours and minutes fields.",
+          "break_under18_warning_hours": "Elapsed time since the current clock-in, including breaks. A warning appears only when the qualifying work time is also reached and the minimum break is not met.",
+          "break_under18_warning_minutes": "Elapsed time since the current clock-in, including breaks. A warning appears only when the qualifying work time is also reached and the minimum break is not met.",
+          "break_adult_minimum_minutes": "Set to 0 to disable warnings for this age band. Minimum recorded break time required in the current clocking.",
+          "break_adult_qualifying_hours": "Actual work in the current clocking, excluding recorded breaks. Combine the hours and minutes fields.",
+          "break_adult_qualifying_minutes": "Actual work in the current clocking, excluding recorded breaks. Combine the hours and minutes fields.",
+          "break_adult_warning_hours": "Elapsed time since the current clock-in, including breaks. A warning appears only when the qualifying work time is also reached and the minimum break is not met.",
+          "break_adult_warning_minutes": "Elapsed time since the current clock-in, including breaks. A warning appears only when the qualifying work time is also reached and the minimum break is not met."
+        }
       }
     }
   }

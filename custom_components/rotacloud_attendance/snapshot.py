@@ -4,6 +4,7 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 from .model import Attendance
 from .roster import Shift
+from .planning import break_seconds_today, break_warning
 
 @dataclass(frozen=True, slots=True)
 class Staff:
@@ -17,12 +18,15 @@ class Staff:
     active_break_start: int | None
     clock_in_delta_seconds: int | None
     clock_out_delta_seconds: int | None
+    previous_day: bool = False
+    total_break_seconds_today: int = 0
+    break_warning: bool = False
 
 def day_bounds(now: datetime, tz: ZoneInfo):
     day = now.astimezone(tz).date()
     return tuple(int(datetime.combine(day + timedelta(days=i), time.min, tzinfo=tz).timestamp()) for i in (-1,0,1))
 
-def snapshot(employees, shifts, active, completed, now, today, tomorrow, late=0, leaving=15):
+def snapshot(employees, shifts, active, completed, now, today, tomorrow, late=0, leaving=15, options=None):
     """All scheduled or actually present today; include overnight overlap."""
     by_shift = {s.id:s for s in shifts}
     today_shifts = [s for s in shifts if s.start < tomorrow and s.end > today]
@@ -57,10 +61,14 @@ def snapshot(employees, shifts, active, completed, now, today, tomorrow, late=0,
         if not current and pending:
             scheduled = pending[0]
         associated = latest and scheduled and latest.shift_id == scheduled.id
-        completed_seconds = sum(b.seconds(now) for a in past + ([current] if current else [])
+        completed_seconds = sum(max(0, min(b.end,tomorrow)-max(b.start,today))
+                                for a in past + ([current] if current else [])
                                 for b in a.breaks if b.end is not None)
         active_start = current.active_break.start if current and current.active_break else None
+        day_breaks = break_seconds_today(past + ([current] if current else []), today, tomorrow, now)
         result[uid] = Staff(uid,name,status,roster,latest,scheduled,completed_seconds,active_start,
                             latest.clock_in - scheduled.start if associated else None,
-                            latest.clock_out - scheduled.end if associated and latest.clock_out is not None else None)
+                            latest.clock_out - scheduled.end if associated and latest.clock_out is not None else None,
+                            bool(current and current.clock_in < today), day_breaks,
+                            break_warning(latest, person.age_band if person else None, options or {}, now))
     return result

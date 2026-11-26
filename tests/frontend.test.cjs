@@ -45,7 +45,7 @@ test("live clock in, breaks and clock out; responsive card",async t=>{
   for(const [button,title] of [["CLOCK IN","Clocked in"],["START BREAK","Break started"],["END BREAK","Break ended"],["CLOCK OUT","Clocked out"]]){
     await pin(page);
     await page.getByRole("heading",{name:"Hello, Alex"}).waitFor();
-    if(button === "START BREAK") assert.equal(await page.locator(".stat").filter({hasText:"Breaks today"}).locator("strong").textContent(),"0h 13m");
+    if(button === "START BREAK") assert.equal(await page.locator(".stat").filter({hasText:"Total Break Time"}).locator("strong").textContent(),"0h 13m");
     assert.equal(await page.evaluate(()=>card.pin),"");
     await page.getByRole("button",{name:button,exact:true}).click();
     await page.getByRole("heading",{name:title,exact:true}).waitFor();
@@ -117,22 +117,81 @@ test("live filter accepts one click across HA updates between pointer down and u
 });
 test("live status/timing pills, colours, centred columns, icons and completion flags",async t=>{
   const page=await liveFixture(t);
-  assert.equal(await page.locator(".pill.status").count(),4);assert.equal(await page.locator(".counts svg").count(),7);
+  assert.equal(await page.locator(".pill.status").count(),4);assert.equal(await page.locator(".counts svg").count(),9);
   assert.equal(await page.getByRole("img",{name:"Shift completed",exact:true}).count(),2);
-  const late=page.locator(".timing").filter({hasText:"5m late"}).first();assert.equal(await late.evaluate(n=>getComputedStyle(n).backgroundColor),"rgb(239, 68, 68)");
-  const early=page.locator(".timing").filter({hasText:"4m early"});assert.equal(await early.evaluate(n=>getComputedStyle(n).backgroundColor),"rgb(234, 179, 8)");
+  const late=page.locator(".timing").filter({hasText:"5m late"}).first();assert.equal(await late.evaluate(n=>getComputedStyle(n).color),"rgb(239, 68, 68)");
+  const early=page.locator(".timing").filter({hasText:"4m early"});assert.equal(await early.evaluate(n=>getComputedStyle(n).color),"rgb(234, 179, 8)");
   for(const column of [2,3,6,7])assert.equal(await page.locator(`tbody tr:first-child td:nth-child(${column})`).evaluate(n=>getComputedStyle(n).textAlign),"center");
   assert.equal(await page.locator(".finish").first().evaluate(n=>getComputedStyle(n).right),"12px");
   assert.equal(await page.locator("tbody tr:first-child td:first-child").evaluate(n=>getComputedStyle(n).color),"rgb(255, 255, 255)");
-  await page.waitForFunction(()=>card.shadowRoot.querySelector('.logo').naturalWidth>0);
+  await page.waitForFunction(()=>card.shadowRoot.querySelector('h2').textContent==='Dashboard');
   if(process.env.FF_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.FF_SCREENSHOT_DIR,"live-attendance-desktop.png"),fullPage:true});
 });
 test("live applies integration thresholds/colours independently and has mobile scrolling",async t=>{
   const page=await liveFixture(t,390);
   await page.evaluate(()=>{states["sensor.count_present"].attributes.display_options={clock_in_late:{minutes:5,color:[0,255,255]},clock_out_late:{minutes:0,color:[128,0,128]},clock_in_early:{minutes:3,color:[0,255,0]},clock_out_early:{minutes:6,color:[255,0,255]}};card.hass={states};});
   const pills=await page.locator(".timing").allTextContents();assert.deepEqual(pills.sort(),["10m late","4m early"].sort());
-  assert.equal(await page.locator(".timing").filter({hasText:"10m late"}).evaluate(n=>getComputedStyle(n).backgroundColor),"rgb(128, 0, 128)");
+  assert.equal(await page.locator(".timing").filter({hasText:"10m late"}).evaluate(n=>getComputedStyle(n).color),"rgb(128, 0, 128)");
   assert.equal(await page.evaluate(()=>document.body.scrollWidth<=innerWidth),true);
   assert.equal(await page.locator(".scroll").evaluate(n=>n.scrollWidth>n.clientWidth),true);
   if(process.env.FF_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.FF_SCREENSHOT_DIR,"live-attendance-mobile.png"),fullPage:true});
+});
+
+test("dashboard has no logo, has timestamp footer and only selected counters are coloured",async t=>{
+ const page=await liveFixture(t);
+ assert.equal(await page.getByRole('heading',{name:'Dashboard',exact:true}).count(),1);
+ assert.equal(await page.locator('.logo').count(),0);
+ assert.equal(await page.locator('tfoot').count(),1);
+ assert.equal((await page.locator('tfoot').textContent()).includes('cached'),false);
+ const neutral=await page.locator('[data-filter="here"] strong').evaluate(n=>getComputedStyle(n).color);
+ assert.equal(neutral,'rgb(255, 255, 255)');
+ assert.equal(await page.locator('[data-filter="here"] svg').evaluate(n=>getComputedStyle(n).color),'rgb(34, 197, 94)');
+ await page.getByRole('button',{name:'Filter: Here',exact:true}).click();
+ assert.equal(await page.locator('[data-filter="here"] strong').evaluate(n=>getComputedStyle(n).color),'rgb(34, 197, 94)');
+ assert.equal(await page.locator('[data-filter="all"] strong').evaluate(n=>getComputedStyle(n).color),neutral);
+});
+test("manual refresh calls HA once per press and never refreshes on render",async t=>{
+ const page=await liveFixture(t);
+ await page.evaluate(()=>{window.refreshCalls=[];card.hass={...card._hass,user:{is_admin:true},callWS:async message=>{refreshCalls.push(message);await new Promise(r=>setTimeout(r,50));return {planning_available:true};}};states['sensor.count_present'].attributes.config_entry_id='example-entry';card.render();card.render();});
+ assert.equal(await page.evaluate(()=>refreshCalls.length),0);
+ await page.evaluate(()=>{card.refresh();card.refresh();});
+ await page.waitForFunction(()=>!card.refreshing);
+ assert.deepEqual(await page.evaluate(()=>refreshCalls),[{type:'rotacloud_attendance/refresh',entry_id:'example-entry'}]);
+});
+test("leave/availability and previous-day attendance have separate tables and break warnings",async t=>{
+ const page=await liveFixture(t);
+ await page.evaluate(()=>{
+  states['sensor.count_present'].attributes.day_start=Math.floor(Date.now()/1000)-7200;
+  states['sensor.count_present'].attributes.planning_available=true;
+  states['sensor.leave']={entity_id:'sensor.leave',state:'1',attributes:{rotacloud_kind:'count',rotacloud_status:'on_leave',rows:[{name:'Riley',times:['All Day']}]}};
+  states['sensor.available']={entity_id:'sensor.available',state:'1',attributes:{rotacloud_kind:'count',rotacloud_status:'available',rows:[{name:'Jordan',times:['09:00 – 13:00','17:00 – 21:00']}]}};
+  states['sensor.old']={entity_id:'sensor.old',state:'here',attributes:{rotacloud_kind:'staff',staff_name:'Previous Day',previous_day:true,clock_in:Math.floor(Date.now()/1000)-86400,completed_break_seconds:0}};
+  states['sensor.Alex'].attributes.break_warning=true;
+  states['sensor.Alex'].attributes.active_break_start=Math.floor(Date.now()/1000)-61;
+  card.hass={...card._hass,states};
+ });
+ assert.equal(await page.locator('.primary tbody tr').count(),4);
+ assert.equal(await page.locator('.previous tbody tr').count(),1);
+ assert.equal(await page.getByRole('heading',{name:'Still Clocked In From Yesterday',exact:true}).count(),1);
+ assert.equal(await page.locator('.planning tbody tr').count(),2);
+ assert.equal(await page.getByRole('img',{name:'Break minimum not met',exact:true}).count(),1);
+ assert.equal((await page.locator('.primary tbody tr').first().locator('td').nth(5).textContent()).includes('active'),false);
+ await page.getByRole('button',{name:'Filter: On Leave',exact:true}).click();
+ assert.equal(await page.locator('.planning tbody tr').count(),1);
+ assert.match(await page.locator('.planning').textContent(),/Riley.*All Day/);
+ await page.getByRole('button',{name:'Filter: Available',exact:true}).click();
+ assert.match(await page.locator('.planning').textContent(),/Jordan.*09:00.*21:00/);
+ await page.getByRole('button',{name:'Filter: Clocked in',exact:true}).click();
+ if(process.env.FF_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.FF_SCREENSHOT_DIR,'dashboard-planning.png'),fullPage:true});
+});
+test("terminal supports focused physical keypad and separates break controls",async t=>{
+ const page=await fixture(t);
+ await page.evaluate(()=>{status='break';card.focus();});
+ await page.keyboard.type('1234');
+ await page.getByRole('heading',{name:'Hello, Alex'}).waitFor();
+ assert.deepEqual(await page.locator('.stat small').allTextContents(),['Current Break','Total Break Time','Clocked In','Scheduled Finish']);
+ assert.equal(await page.getByRole('button',{name:'END BREAK',exact:true}).locator('svg').count(),1);
+ assert.equal(await page.locator('hr.divider').count(),1);
+ assert.equal(await page.getByText('RotaCloud attendance',{exact:true}).count(),0);
+ if(process.env.FF_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.FF_SCREENSHOT_DIR,'terminal-break-layout.png'),fullPage:true});
 });

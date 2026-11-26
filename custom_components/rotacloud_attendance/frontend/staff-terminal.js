@@ -8,6 +8,14 @@ class FFStaffTerminal extends HTMLElement {
     this.error = "";
     this.generation = 0;
     this.busy = false;
+    this.onKey = event => {
+      if (this.stage !== "pin" || this.busy || event.ctrlKey || event.altKey || event.metaKey || event.repeat) return;
+      const target=event.composedPath()[0];
+      if (target?.matches?.("input,textarea,select,[contenteditable=true]")) return;
+      if (/^[0-9]$/.test(event.key)) { event.preventDefault(); this.press(event.key); }
+      else if (event.key === "Backspace") { event.preventDefault(); this.press("back"); }
+      else if (event.key === "Escape") { event.preventDefault(); this.press("clear"); }
+    };
   }
   setConfig(config) {
     if (!config.entry_id) throw new Error("Set the RotaCloud integration entry_id.");
@@ -24,12 +32,16 @@ class FFStaffTerminal extends HTMLElement {
   }
   connectedCallback() {
     this.render();
+    this.tabIndex = 0;
+    this.addEventListener("keydown", this.onKey);
     this.ticker = setInterval(() => {
+      if(document.hidden) return;
       const node = this.shadowRoot.querySelector("[data-break]");
       if (node && this.person?.active_break_start) node.textContent = this.duration(Date.now()/1000-this.person.active_break_start);
-    }, 1000);
+    }, 60000);
   }
   disconnectedCallback() {
+    this.removeEventListener("keydown", this.onKey);
     clearInterval(this.ticker);
     this.reset();
   }
@@ -63,7 +75,7 @@ class FFStaffTerminal extends HTMLElement {
     else if (/^[0-9]$/.test(value) && this.pin.length < this.config.pin_length) this.pin += value;
     this.arm(20000);
     if (this.pin.length === this.config.pin_length) void this.identify();
-    else this.render();
+    else { this.render(); this.focus({preventScroll:true}); }
   }
   async request(command, data, mutation = false) {
     let timeout;
@@ -126,8 +138,8 @@ class FFStaffTerminal extends HTMLElement {
       header{text-align:center;border-bottom:1px solid #333;width:100%;padding-bottom:20px}h1{font-family:Montserrat,Arial,sans-serif;font-size:clamp(24px,4vw,36px);font-weight:900;font-style:italic;margin:0;letter-spacing:-.04em}h1 span{color:#ff6600}
       .sub{color:#b8b8b8;font-size:13px;letter-spacing:.13em;margin-top:6px;text-transform:uppercase}h2{margin:0;font-size:26px;text-align:center}p{margin:0;color:#bbb;text-align:center}.dots{font-size:24px;letter-spacing:10px;color:#ff6600;min-height:30px}
       .keys{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:min(100%,360px)}button,select{font:inherit;min-height:62px;border:1px solid #404040;border-radius:10px;background:#252525;color:white;touch-action:manipulation}button{cursor:pointer}button:focus-visible,select:focus-visible{outline:3px solid #ff6600}button:disabled{opacity:.5;cursor:wait}.keys button{font-size:25px}.keys .small{font-size:15px}
-      .actions{width:min(100%,460px);display:grid;gap:12px}.action{font-size:20px;font-weight:800}.green{background:#176b43;border-color:#258f5d}.amber{background:#76520d;border-color:#b58a2c}.red{background:#842e2e;border-color:#b74b4b}.quiet{min-height:42px;background:transparent;border:0;color:#bbb}.stats{display:grid;gap:12px;width:min(100%,460px)}.stat{border-radius:12px;background:#252525;padding:14px;text-align:center}.stat small{display:block;color:#bbb}.stat strong{display:block;font-size:clamp(24px,4vw,36px);font-variant-numeric:tabular-nums;margin-top:5px}.ok{color:#5bd492;font-size:40px}.err{color:#ff9b9b}.foot{font-size:12px;color:#aaa;text-align:center}#body{width:100%;display:flex;align-items:center;flex-direction:column;gap:18px}select{width:100%;padding:10px}
-      </style><main><header><h1>STAFF <span>ATTENDANCE</span></h1><div class="sub">Staff clocking terminal</div></header><section id="body" aria-live="polite"></section><div class="foot">RotaCloud attendance</div></main>`;
+      .actions{width:min(100%,460px);display:grid;gap:12px}.action{font-size:20px;font-weight:800}.green{background:#176b43;border-color:#258f5d}.amber{background:#76520d;border-color:#b58a2c}.red{background:#842e2e;border-color:#b74b4b}.quiet{min-height:42px;background:transparent;border:0;color:#bbb}.stats{display:grid;gap:12px;width:min(100%,460px)}.stat{border-radius:12px;background:#252525;padding:14px;text-align:center}.stat small{display:block;color:#bbb}.stat strong{display:block;font-size:clamp(24px,4vw,36px);font-variant-numeric:tabular-nums;margin-top:5px}.ok{color:#5bd492;font-size:40px}.err{color:#ff9b9b}.divider{width:min(100%,460px);border:0;border-top:1px solid #333;margin:14px 0}.action-icon{width:23px;height:23px;margin-right:10px;vertical-align:middle;pointer-events:none}#body{width:100%;display:flex;align-items:center;flex-direction:column;gap:18px}select{width:100%;padding:10px}
+      </style><main><header><h1>STAFF <span>ATTENDANCE</span></h1><div class="sub">Staff clocking terminal</div></header><section id="body" aria-live="polite"></section></main>`;
     const body = this.shadowRoot.querySelector("#body");
     const el = (tag,text,cls,parent=body) => {
       const node = document.createElement(tag);
@@ -139,8 +151,8 @@ class FFStaffTerminal extends HTMLElement {
       const node = el("button",text,cls,parent); node.type="button";
       node.disabled=this.busy; node.addEventListener("click",fn); return node;
     };
-    const stats = items => {
-      const grid = el("div",null,"stats");
+    const stats = (items, parent=body) => {
+      const grid = el("div",null,"stats",parent);
       for (const [label,value,running] of items) {
         const stat = el("div",null,"stat",grid); el("small",label,null,stat);
         const valueNode = el("strong",value,null,stat); if(running) valueNode.dataset.break="";
@@ -159,8 +171,22 @@ class FFStaffTerminal extends HTMLElement {
       const p=this.person;
       el("h2","Hello, "+p.name);
       el("p",p.state==="out"?"Not clocked in":p.state==="break"?"On break":"Clocked in");
-      if(p.state==="break") stats([["Current break",this.duration(Date.now()/1000-p.active_break_start),true]]);
-      if(p.state!=="out") stats([["Clocked in",this.time(p.clock_in)],["Scheduled finish",this.time(p.scheduled_end)],["Breaks today",this.duration(p.break_seconds_today ?? p.break_seconds)]]);
+      const actionButton = (action, parent) => {
+        const choices={clock_in:["CLOCK IN","green","M9 3H4v18h5M10 12h12M18 8l4 4-4 4"],clock_out:["CLOCK OUT","red","M15 3h5v18h-5M14 12H2M6 8l-4 4 4 4"],start_break:["START BREAK","amber","M7 4v16M17 4v16"],end_break:["END BREAK","green","M8 4l12 8-12 8Z"]};
+        const c=choices[action];const b=button(c[0],"action "+c[1],()=>void this.act(action),parent);
+        const ns="http://www.w3.org/2000/svg",svg=document.createElementNS(ns,"svg"),path=document.createElementNS(ns,"path");svg.setAttribute("viewBox","0 0 24 24");svg.setAttribute("class","action-icon");svg.setAttribute("aria-hidden","true");path.setAttribute("d",c[2]);path.setAttribute("fill","none");path.setAttribute("stroke","currentColor");path.setAttribute("stroke-width","2");svg.append(path);b.prepend(svg);
+        if(action==="clock_in"&&p.shifts.length&&this.shift==null)b.disabled=true;
+      };
+      if(p.state!=="out") {
+        const breaks=el("section",null,"actions");
+        if(p.state==="break") stats([["Current Break",this.duration(Date.now()/1000-p.active_break_start),true]],breaks);
+        stats([["Total Break Time",this.duration(p.break_seconds_today ?? p.break_seconds)]],breaks);
+        for(const action of p.actions.filter(a=>a==="start_break"||a==="end_break")) actionButton(action,breaks);
+        el("hr",null,"divider");
+        const clock=el("section",null,"actions");
+        stats([["Clocked In",this.time(p.clock_in)],["Scheduled Finish",this.time(p.scheduled_end)]],clock);
+        if(p.actions.includes("clock_out")) actionButton("clock_out",clock);
+      }
       const actions=el("div",null,"actions");
       if(p.state==="out" && p.shifts.length) {
         const label=el("label","Scheduled shift",null,actions);
@@ -169,9 +195,8 @@ class FFStaffTerminal extends HTMLElement {
         for(const shift of p.shifts){const o=el("option",this.time(shift.start)+" – "+this.time(shift.end),null,select);o.value=String(shift.id);}
         select.value=this.shift==null?"":String(this.shift);
         select.addEventListener("change",()=>{this.shift=select.value?Number(select.value):null;this.render();});
-      } else if (p.state==="out") el("p","No remaining scheduled shift today. Clock in as unscheduled.");
-      const choices={clock_in:["CLOCK IN","green"],start_break:["START BREAK","amber"],end_break:["END BREAK","green"],clock_out:["CLOCK OUT","red"]};
-      for(const action of p.actions){const c=choices[action];if(!c)continue;const b=button(c[0],"action "+c[1],()=>void this.act(action),actions);if(action==="clock_in"&&p.shifts.length&&this.shift==null)b.disabled=true;}
+      } else if(p.state==="out") el("p","No remaining scheduled shift today. Clock in as unscheduled.");
+      if(p.state==="out") actionButton("clock_in",actions);
       button("Cancel","quiet",()=>this.reset(),actions);
     } else if (this.stage === "result") {
       const r=this.result;
@@ -180,9 +205,9 @@ class FFStaffTerminal extends HTMLElement {
       const greeting={clock_in:"Have a great shift, ",clock_out:"Thanks for today, ",start_break:"Enjoy your break, ",end_break:"Welcome back, "};
       el("p",greeting[r.action]+this.person.name+"!");
       if(r.action==="clock_in") stats([["Clock-in time",this.time(r.clock_in)],["Scheduled finish",this.time(r.scheduled_end)]]);
-      if(r.action==="start_break") stats([["Break started",this.time(r.last_break_start)],["Breaks today",this.duration(r.break_seconds_today ?? r.break_seconds)]]);
-      if(r.action==="end_break") stats([["This break",this.duration(r.last_break_seconds)],["Breaks today",this.duration(r.break_seconds_today ?? r.break_seconds)]]);
-      if(r.action==="clock_out") {stats([["Clock-out time",this.time(r.clock_out)],["Total shift duration",this.duration(r.shift_seconds)],["Breaks today",this.duration(r.break_seconds_today ?? r.break_seconds)]]);if(r.provisional_break_total)el("p","Break total awaiting RotaCloud reconciliation.");}
+      if(r.action==="start_break") stats([["Break started",this.time(r.last_break_start)],["Total Break Time",this.duration(r.break_seconds_today ?? r.break_seconds)]]);
+      if(r.action==="end_break") stats([["This break",this.duration(r.last_break_seconds)],["Total Break Time",this.duration(r.break_seconds_today ?? r.break_seconds)]]);
+      if(r.action==="clock_out") {stats([["Clock-out time",this.time(r.clock_out)],["Total shift duration",this.duration(r.shift_seconds)],["Total Break Time",this.duration(r.break_seconds_today ?? r.break_seconds)]]);if(r.provisional_break_total)el("p","Break total awaiting RotaCloud reconciliation.");}
       button("Done","quiet",()=>this.reset());
     }
   }
